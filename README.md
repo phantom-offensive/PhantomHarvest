@@ -99,6 +99,31 @@ make windows
 make all
 ```
 
+### Stealth Build (Full Obfuscation)
+
+For engagements where AV evasion matters, use [garble](https://github.com/burrowers/garble) to obfuscate all Go symbols, string literals, and function names:
+
+```bash
+# Install garble
+go install mvdan.cc/garble@latest
+
+# Build obfuscated binaries
+make garble-linux
+make garble-windows
+make garble-all
+```
+
+**What the stealth build does:**
+- Obfuscates all Go function names and package paths
+- Encrypts all string literals at compile time
+- Strips debug info and symbol tables
+- Command strings (cmdkey, netsh) are XOR-encrypted at runtime
+
+**Additional OPSEC:**
+- Rename the binary before deployment (e.g., `svchost.exe`, `update.bin`)
+- Use `-quiet -json` flags to avoid terminal output
+- Pipe JSON to a file and exfiltrate separately
+
 ## Usage
 
 ```

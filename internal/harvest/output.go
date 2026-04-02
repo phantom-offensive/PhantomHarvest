@@ -82,7 +82,7 @@ func OutputTable(findings []Finding) {
 
 	// Print summary
 	fmt.Printf("  %s╔═══════════════════════════════════════════════════════════╗%s\n", colorPurple, colorReset)
-	fmt.Printf("  %s║  HARVEST SUMMARY                                          ║%s\n", colorPurple, colorReset)
+	fmt.Printf("  %s║  SCAN SUMMARY                                             ║%s\n", colorPurple, colorReset)
 	fmt.Printf("  %s╠═══════════════════════════════════════════════════════════╣%s\n", colorPurple, colorReset)
 	fmt.Printf("  %s║%s  %sHIGH%s: %-4d  %sMEDIUM%s: %-4d  %sLOW%s: %-4d  TOTAL: %-4d     %s║%s\n",
 		colorPurple, colorReset,
@@ -153,9 +153,8 @@ func OutputJSON(findings []Finding) {
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
 	enc.Encode(map[string]interface{}{
-		"tool":     "PhantomHarvest",
-		"version":  "1.0.0",
-		"count":    len(findings),
-		"findings": findings,
+		"v":       "1.0.0",
+		"count":   len(findings),
+		"results": findings,
 	})
 }

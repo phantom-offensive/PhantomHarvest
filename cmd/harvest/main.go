@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/phantom-offensive/PhantomHarvest/internal/harvest"
+	"github.com/phantom-offensive/PhantomHarvest/internal/obfuscate"
 )
 
 var version = "1.0.0"
@@ -53,13 +54,15 @@ func main() {
 }
 
 func printBanner() {
+	name := obfuscate.BannerName()
+	sub := obfuscate.BannerSub()
 	fmt.Print("\033[35m")
-	fmt.Println(`
+	fmt.Printf(`
     ╔═══════════════════════════════════════╗
-    ║   PhantomHarvest — Credential Reaper  ║
-    ║   v` + version + `                             ║
-    ╚═══════════════════════════════════════╝`)
-	fmt.Print("\033[0m")
+    ║   %s — %s  ║
+    ║   v%s                             ║
+    ╚═══════════════════════════════════════╝`, name, sub, version)
+	fmt.Print("\033[0m\n")
 	fmt.Printf("  OS: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	fmt.Println()
 }

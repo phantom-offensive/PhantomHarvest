@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	// Import obfuscate to ensure it's compiled in
+	_ "github.com/phantom-offensive/PhantomHarvest/internal/obfuscate"
 )
 
 // Regex patterns for credential detection in file contents

