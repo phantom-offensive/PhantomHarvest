@@ -46,6 +46,12 @@ var catColors = map[string]string{
 	"DPAPI":            colorRed,
 	"Windows":          colorBlue,
 	"Crypto":           colorPurple,
+	"Environment":      colorRed,
+	"App Token":        colorCyan,
+	"FTP Client":       colorYellow,
+	"DB Client":        colorYellow,
+	"VPN":              colorGreen,
+	"Certificate":      colorRed,
 }
 
 var confColors = map[string]string{
@@ -150,10 +156,16 @@ func OutputTable(findings []Finding) {
 
 // OutputJSON prints findings as JSON to stdout.
 func OutputJSON(findings []Finding) {
-	enc := json.NewEncoder(os.Stdout)
+	OutputJSONWriter(findings, ScanMeta{}, os.Stdout)
+}
+
+// OutputJSONWriter writes JSON to any writer.
+func OutputJSONWriter(findings []Finding, meta ScanMeta, w *os.File) {
+	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	enc.Encode(map[string]interface{}{
 		"v":       "1.0.0",
+		"meta":    meta,
 		"count":   len(findings),
 		"results": findings,
 	})
@@ -167,13 +179,7 @@ func OutputJSONFile(findings []Finding, path string) {
 		return
 	}
 	defer f.Close()
-	enc := json.NewEncoder(f)
-	enc.SetIndent("", "  ")
-	enc.Encode(map[string]interface{}{
-		"v":       "1.0.0",
-		"count":   len(findings),
-		"results": findings,
-	})
+	OutputJSONWriter(findings, ScanMeta{}, f)
 	fmt.Printf("  \033[32m[+]\033[0m Exported JSON: %s (%d findings)\n", path, len(findings))
 }
 
@@ -255,6 +261,100 @@ func OutputTXT(findings []Finding, path string) {
 	}
 
 	fmt.Printf("  \033[32m[+]\033[0m Exported TXT: %s (%d findings)\n", path, len(findings))
+}
+
+// OutputHTML writes a styled HTML report.
+func OutputHTML(findings []Finding, meta ScanMeta, path string) {
+	f, err := os.Create(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, err)
+		return
+	}
+	defer f.Close()
+
+	confCounts := map[string]int{"HIGH": 0, "MEDIUM": 0, "LOW": 0}
+	for _, finding := range findings {
+		confCounts[finding.Confidence]++
+	}
+
+	grouped := make(map[string][]Finding)
+	for _, finding := range findings {
+		grouped[finding.Category] = append(grouped[finding.Category], finding)
+	}
+	var cats []string
+	for c := range grouped {
+		cats = append(cats, c)
+	}
+	sort.Strings(cats)
+
+	f.WriteString(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Scan Report</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0e1a;color:#e0e7ff;font-family:'Segoe UI',system-ui,sans-serif;padding:20px}
+.header{background:linear-gradient(135deg,#1e1b4b,#0f172a);border:1px solid #3730a3;border-radius:12px;padding:24px;text-align:center;margin-bottom:20px}
+.header h1{color:#818cf8;font-size:24px}
+.header .sub{color:#6366f1;font-size:12px;text-transform:uppercase;letter-spacing:2px;margin-top:4px}
+.meta{background:#111827;border:1px solid #1f2937;border-radius:8px;padding:14px;margin-bottom:20px;font-size:12px;color:#9ca3af;display:flex;gap:24px;flex-wrap:wrap}
+.meta span{color:#e0e7ff}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+.stat{background:#111827;border:1px solid #1f2937;border-radius:8px;padding:16px;text-align:center}
+.stat .val{font-size:28px;font-weight:700}
+.stat .lbl{font-size:10px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin-top:4px}
+.high .val{color:#ef4444} .med .val{color:#f59e0b} .low .val{color:#6b7280} .total .val{color:#818cf8}
+.cat{background:#111827;border:1px solid #1f2937;border-radius:8px;margin-bottom:12px;overflow:hidden}
+.cat-head{padding:12px 16px;border-bottom:1px solid #1f2937;font-weight:600;color:#c7d2fe;font-size:14px}
+.finding{padding:10px 16px;border-bottom:1px solid #0f172a;font-size:12px}
+.finding:hover{background:rgba(99,102,241,.05)}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:10px;font-weight:600;margin-right:8px}
+.badge-HIGH{background:rgba(239,68,68,.15);color:#ef4444}
+.badge-MEDIUM{background:rgba(245,158,11,.15);color:#f59e0b}
+.badge-LOW{background:rgba(107,114,128,.15);color:#6b7280}
+.file{color:#6b7280;font-size:11px;margin-bottom:2px}
+.key{color:#38bdf8;font-weight:600}
+.val-text{color:#10b981}
+.footer{text-align:center;padding:20px;color:#374151;font-size:11px;margin-top:20px}
+</style></head><body>
+`)
+
+	f.WriteString(`<div class="header"><h1>Scan Report</h1><div class="sub">Post-Exploitation Credential Analysis</div></div>`)
+
+	// Metadata
+	f.WriteString(fmt.Sprintf(`<div class="meta">
+<div>Host: <span>%s</span></div>
+<div>OS: <span>%s</span></div>
+<div>User: <span>%s</span></div>
+<div>Path: <span>%s</span></div>
+<div>Time: <span>%s</span></div>
+</div>`, meta.Hostname, meta.OS, meta.User, meta.ScanPath, meta.Timestamp))
+
+	// Stats
+	f.WriteString(fmt.Sprintf(`<div class="stats">
+<div class="stat high"><div class="val">%d</div><div class="lbl">High</div></div>
+<div class="stat med"><div class="val">%d</div><div class="lbl">Medium</div></div>
+<div class="stat low"><div class="val">%d</div><div class="lbl">Low</div></div>
+<div class="stat total"><div class="val">%d</div><div class="lbl">Total</div></div>
+</div>`, confCounts["HIGH"], confCounts["MEDIUM"], confCounts["LOW"], len(findings)))
+
+	// Findings by category
+	for _, cat := range cats {
+		f.WriteString(fmt.Sprintf(`<div class="cat"><div class="cat-head">%s (%d)</div>`, cat, len(grouped[cat])))
+		for _, finding := range grouped[cat] {
+			loc := finding.File
+			if finding.Line > 0 {
+				loc = fmt.Sprintf("%s:%d", finding.File, finding.Line)
+			}
+			f.WriteString(fmt.Sprintf(`<div class="finding">
+<span class="badge badge-%s">%s</span>
+<span class="file">%s</span><br>
+<span class="key">%s</span> &rarr; <span class="val-text">%s</span>
+</div>`, finding.Confidence, finding.Confidence, loc, finding.Key, finding.Value))
+		}
+		f.WriteString(`</div>`)
+	}
+
+	f.WriteString(`<div class="footer">Generated by PhantomHarvest</div></body></html>`)
+
+	fmt.Printf("  \033[32m[+]\033[0m Exported HTML: %s (%d findings)\n", path, len(findings))
 }
 
 func csvEscape(s string) string {

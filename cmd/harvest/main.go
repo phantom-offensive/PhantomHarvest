@@ -18,7 +18,8 @@ func main() {
 	outputJSON := flag.Bool("json", false, "Output as JSON")
 	outputCSV := flag.String("csv", "", "Export to CSV file (e.g. -csv loot.csv)")
 	outputTXT := flag.String("txt", "", "Export to TXT file (e.g. -txt loot.txt)")
-	outputFile := flag.String("o", "", "Export to file (auto-detect format by extension: .json, .csv, .txt)")
+	outputHTML := flag.String("html", "", "Export to HTML report (e.g. -html report.html)")
+	outputFile := flag.String("o", "", "Export to file (auto-detect: .json, .csv, .txt, .html)")
 	quiet := flag.Bool("quiet", false, "Only show found credentials (no banner)")
 	highOnly := flag.Bool("high-only", false, "Only show HIGH confidence findings")
 	maxDepth := flag.Int("depth", 20, "Maximum directory depth")
@@ -52,8 +53,14 @@ func main() {
 			*outputCSV = *outputFile
 		} else if strings.HasSuffix(lower, ".txt") {
 			*outputTXT = *outputFile
+		} else if strings.HasSuffix(lower, ".html") {
+			harvest.OutputHTML(results, scanner.Meta, *outputFile)
+			harvest.OutputTable(results)
+			if len(results) == 0 {
+				os.Exit(1)
+			}
+			return
 		} else {
-			// Default to JSON for any other extension
 			harvest.OutputJSONFile(results, *outputFile)
 			harvest.OutputTable(results)
 			if len(results) == 0 {
@@ -71,6 +78,11 @@ func main() {
 	// Export to TXT
 	if *outputTXT != "" {
 		harvest.OutputTXT(results, *outputTXT)
+	}
+
+	// Export to HTML
+	if *outputHTML != "" {
+		harvest.OutputHTML(results, scanner.Meta, *outputHTML)
 	}
 
 	// Terminal output

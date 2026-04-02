@@ -4,9 +4,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
+
+// ScanMeta contains metadata about the scan.
+type ScanMeta struct {
+	Hostname  string `json:"hostname"`
+	OS        string `json:"os"`
+	User      string `json:"user"`
+	ScanPath  string `json:"scan_path"`
+	Timestamp string `json:"timestamp"`
+}
 
 // Scanner walks the filesystem looking for credentials.
 type Scanner struct {
@@ -14,6 +25,7 @@ type Scanner struct {
 	maxDepth int
 	results  []Finding
 	mu       sync.Mutex
+	Meta     ScanMeta
 }
 
 // Confidence levels for findings
@@ -35,7 +47,23 @@ type Finding struct {
 }
 
 func NewScanner(root string, maxDepth int) *Scanner {
-	return &Scanner{root: root, maxDepth: maxDepth}
+	hostname, _ := os.Hostname()
+	username := os.Getenv("USER")
+	if username == "" {
+		username = os.Getenv("USERNAME")
+	}
+
+	return &Scanner{
+		root:     root,
+		maxDepth: maxDepth,
+		Meta: ScanMeta{
+			Hostname:  hostname,
+			OS:        runtime.GOOS + "/" + runtime.GOARCH,
+			User:      username,
+			ScanPath:  root,
+			Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+		},
+	}
 }
 
 // AddExcludes adds user-specified paths to skip during scanning.
@@ -108,6 +136,27 @@ func (s *Scanner) Run() []Finding {
 	go func() {
 		defer wg.Done()
 		s.scanWindows()
+	}()
+
+	// Phase 8: Environment variables
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.scanEnvironment()
+	}()
+
+	// Phase 9: App tokens (Slack, Discord, Teams, Telegram)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.scanAppTokens()
+	}()
+
+	// Phase 10: App configs (FileZilla, DBeaver, pgAdmin, HeidiSQL, VPN, Certs)
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		s.scanAppConfigs()
 	}()
 
 	wg.Wait()
