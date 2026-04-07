@@ -28,6 +28,13 @@ func (s *Scanner) scanEnvironment() {
 		{"Private Key", regexp.MustCompile(`(?i)^(PRIVATE_KEY|SSL_KEY|TLS_KEY)$`)},
 	}
 
+	// Skip env vars set by the tool's runner (CI/CD systems running phantom-harvest itself).
+	// These would create noisy false positives that aren't credentials from the target host.
+	skipEnvPrefixes := []string{
+		"GITHUB_", "GITLAB_", "CI", "CI_", "JENKINS_", "RUNNER_",
+		"BUILDKITE_", "BUILD_", "AGENT_", "TF_BUILD", "BITRISE_",
+	}
+
 	for _, env := range os.Environ() {
 		parts := strings.SplitN(env, "=", 2)
 		if len(parts) != 2 || parts[1] == "" {
@@ -35,6 +42,17 @@ func (s *Scanner) scanEnvironment() {
 		}
 		key := parts[0]
 		value := parts[1]
+
+		skip := false
+		for _, prefix := range skipEnvPrefixes {
+			if key == strings.TrimSuffix(prefix, "_") || strings.HasPrefix(key, prefix) {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			continue
+		}
 
 		for _, p := range envSecretPatterns {
 			if p.pattern.MatchString(key) {

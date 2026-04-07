@@ -2,6 +2,7 @@ package harvest
 
 import (
 	"encoding/xml"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -41,13 +42,19 @@ type fileZillaServers struct {
 }
 
 func (s *Scanner) scanFileZilla(home string) {
-	paths := []string{
-		"AppData/Roaming/FileZilla/sitemanager.xml",
-		"AppData/Roaming/FileZilla/recentservers.xml",
+	var paths []string
+	if runtime.GOOS == "windows" {
+		paths = append(paths,
+			"AppData/Roaming/FileZilla/sitemanager.xml",
+			"AppData/Roaming/FileZilla/recentservers.xml",
+		)
+	}
+	// Linux/macOS variants
+	paths = append(paths,
 		".config/filezilla/sitemanager.xml",
 		".config/filezilla/recentservers.xml",
 		".filezilla/sitemanager.xml",
-	}
+	)
 
 	for _, p := range paths {
 		fzPath := filepath.Join(home, p)
@@ -60,7 +67,10 @@ func (s *Scanner) scanFileZilla(home string) {
 		if err := xml.Unmarshal(data, &servers); err != nil {
 			// Try wrapping in root element
 			wrapped := "<root>" + string(data) + "</root>"
-			xml.Unmarshal([]byte(wrapped), &servers)
+			if err := xml.Unmarshal([]byte(wrapped), &servers); err != nil {
+				fmt.Fprintf(os.Stderr, "[!] failed to parse FileZilla config %s: %v\n", fzPath, err)
+				continue
+			}
 		}
 
 		if len(servers.Servers) > 0 {
@@ -97,12 +107,18 @@ func (s *Scanner) scanFileZilla(home string) {
 // ═══════ DBeaver ═══════
 
 func (s *Scanner) scanDBeaver(home string) {
-	paths := []string{
-		"AppData/Roaming/DBeaverData/workspace6/General/.dbeaver/credentials-config.json",
-		"AppData/Roaming/DBeaverData/workspace6/General/.dbeaver/data-sources.json",
+	var paths []string
+	if runtime.GOOS == "windows" {
+		paths = append(paths,
+			"AppData/Roaming/DBeaverData/workspace6/General/.dbeaver/credentials-config.json",
+			"AppData/Roaming/DBeaverData/workspace6/General/.dbeaver/data-sources.json",
+		)
+	}
+	// Linux/macOS
+	paths = append(paths,
 		".local/share/DBeaverData/workspace6/General/.dbeaver/credentials-config.json",
 		".local/share/DBeaverData/workspace6/General/.dbeaver/data-sources.json",
-	}
+	)
 
 	for _, p := range paths {
 		dbPath := filepath.Join(home, p)
@@ -128,11 +144,14 @@ func (s *Scanner) scanDBeaver(home string) {
 // ═══════ pgAdmin ═══════
 
 func (s *Scanner) scanPgAdmin(home string) {
-	paths := []string{
-		"AppData/Roaming/pgAdmin/pgadmin4.db",
-		"AppData/Roaming/pgAdmin4/pgadmin4.db",
-		".pgadmin/pgadmin4.db",
+	var paths []string
+	if runtime.GOOS == "windows" {
+		paths = append(paths,
+			"AppData/Roaming/pgAdmin/pgadmin4.db",
+			"AppData/Roaming/pgAdmin4/pgadmin4.db",
+		)
 	}
+	paths = append(paths, ".pgadmin/pgadmin4.db")
 
 	for _, p := range paths {
 		pgPath := filepath.Join(home, p)

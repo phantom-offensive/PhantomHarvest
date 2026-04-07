@@ -156,14 +156,16 @@ func OutputTable(findings []Finding) {
 
 // OutputJSON prints findings as JSON to stdout.
 func OutputJSON(findings []Finding) {
-	OutputJSONWriter(findings, ScanMeta{}, os.Stdout)
+	if err := OutputJSONWriter(findings, ScanMeta{}, os.Stdout); err != nil {
+		fmt.Fprintf(os.Stderr, "  [-] Error encoding JSON: %v\n", err)
+	}
 }
 
 // OutputJSONWriter writes JSON to any writer.
-func OutputJSONWriter(findings []Finding, meta ScanMeta, w *os.File) {
+func OutputJSONWriter(findings []Finding, meta ScanMeta, w *os.File) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
-	enc.Encode(map[string]interface{}{
+	return enc.Encode(map[string]interface{}{
 		"v":       "1.0.0",
 		"meta":    meta,
 		"count":   len(findings),
@@ -172,31 +174,41 @@ func OutputJSONWriter(findings []Finding, meta ScanMeta, w *os.File) {
 }
 
 // OutputJSONFile writes findings as JSON to a file.
-func OutputJSONFile(findings []Finding, path string) {
+func OutputJSONFile(findings []Finding, path string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, err)
-		return
+		return err
 	}
 	defer f.Close()
-	OutputJSONWriter(findings, ScanMeta{}, f)
+	if err := OutputJSONWriter(findings, ScanMeta{}, f); err != nil {
+		fmt.Fprintf(os.Stderr, "  [-] Error encoding JSON to %s: %v\n", path, err)
+		return err
+	}
 	fmt.Printf("  \033[32m[+]\033[0m Exported JSON: %s (%d findings)\n", path, len(findings))
+	return nil
 }
 
 // OutputCSV writes findings as CSV to a file.
-func OutputCSV(findings []Finding, path string) {
+func OutputCSV(findings []Finding, path string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, err)
-		return
+		return err
 	}
 	defer f.Close()
 
-	// Header
-	f.WriteString("Confidence,Category,Type,File,Line,Key,Value\n")
+	write := func(s string) error {
+		_, err := f.WriteString(s)
+		return err
+	}
+
+	if err := write("Confidence,Category,Type,File,Line,Key,Value\n"); err != nil {
+		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, err)
+		return err
+	}
 
 	for _, finding := range findings {
-		// Escape CSV fields
 		key := csvEscape(finding.Key)
 		value := csvEscape(finding.Value)
 		file := csvEscape(finding.File)
@@ -206,37 +218,49 @@ func OutputCSV(findings []Finding, path string) {
 			line = fmt.Sprintf("%d", finding.Line)
 		}
 
-		f.WriteString(fmt.Sprintf("%s,%s,%s,%s,%s,%s,%s\n",
+		if err := write(fmt.Sprintf("%s,%s,%s,%s,%s,%s,%s\n",
 			finding.Confidence, finding.Category, finding.Type,
-			file, line, key, value))
+			file, line, key, value)); err != nil {
+			fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, err)
+			return err
+		}
 	}
 
 	fmt.Printf("  \033[32m[+]\033[0m Exported CSV: %s (%d findings)\n", path, len(findings))
+	return nil
 }
 
 // OutputTXT writes findings as a readable text report.
-func OutputTXT(findings []Finding, path string) {
+func OutputTXT(findings []Finding, path string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, err)
-		return
+		return err
 	}
 	defer f.Close()
 
-	// Count by confidence
+	var firstErr error
+	write := func(s string) {
+		if firstErr != nil {
+			return
+		}
+		if _, err := f.WriteString(s); err != nil {
+			firstErr = err
+		}
+	}
+
 	confCounts := map[string]int{"HIGH": 0, "MEDIUM": 0, "LOW": 0}
 	for _, finding := range findings {
 		confCounts[finding.Confidence]++
 	}
 
-	f.WriteString("================================================================\n")
-	f.WriteString("  SCAN REPORT\n")
-	f.WriteString("================================================================\n\n")
-	f.WriteString(fmt.Sprintf("  Total Findings: %d\n", len(findings)))
-	f.WriteString(fmt.Sprintf("  HIGH: %d | MEDIUM: %d | LOW: %d\n\n", confCounts["HIGH"], confCounts["MEDIUM"], confCounts["LOW"]))
-	f.WriteString("================================================================\n\n")
+	write("================================================================\n")
+	write("  SCAN REPORT\n")
+	write("================================================================\n\n")
+	write(fmt.Sprintf("  Total Findings: %d\n", len(findings)))
+	write(fmt.Sprintf("  HIGH: %d | MEDIUM: %d | LOW: %d\n\n", confCounts["HIGH"], confCounts["MEDIUM"], confCounts["LOW"]))
+	write("================================================================\n\n")
 
-	// Group by category
 	grouped := make(map[string][]Finding)
 	for _, finding := range findings {
 		grouped[finding.Category] = append(grouped[finding.Category], finding)
@@ -249,28 +273,43 @@ func OutputTXT(findings []Finding, path string) {
 	sort.Strings(cats)
 
 	for _, cat := range cats {
-		f.WriteString(fmt.Sprintf("--- %s (%d) ---\n\n", cat, len(grouped[cat])))
+		write(fmt.Sprintf("--- %s (%d) ---\n\n", cat, len(grouped[cat])))
 		for _, finding := range grouped[cat] {
 			loc := finding.File
 			if finding.Line > 0 {
 				loc = fmt.Sprintf("%s:%d", finding.File, finding.Line)
 			}
-			f.WriteString(fmt.Sprintf("  [%s] %s\n", finding.Confidence, loc))
-			f.WriteString(fmt.Sprintf("    %s = %s\n\n", finding.Key, finding.Value))
+			write(fmt.Sprintf("  [%s] %s\n", finding.Confidence, loc))
+			write(fmt.Sprintf("    %s = %s\n\n", finding.Key, finding.Value))
 		}
 	}
 
+	if firstErr != nil {
+		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, firstErr)
+		return firstErr
+	}
 	fmt.Printf("  \033[32m[+]\033[0m Exported TXT: %s (%d findings)\n", path, len(findings))
+	return nil
 }
 
 // OutputHTML writes a styled HTML report.
-func OutputHTML(findings []Finding, meta ScanMeta, path string) {
+func OutputHTML(findings []Finding, meta ScanMeta, path string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, err)
-		return
+		return err
 	}
 	defer f.Close()
+
+	var firstErr error
+	write := func(s string) {
+		if firstErr != nil {
+			return
+		}
+		if _, err := f.WriteString(s); err != nil {
+			firstErr = err
+		}
+	}
 
 	confCounts := map[string]int{"HIGH": 0, "MEDIUM": 0, "LOW": 0}
 	for _, finding := range findings {
@@ -287,7 +326,7 @@ func OutputHTML(findings []Finding, meta ScanMeta, path string) {
 	}
 	sort.Strings(cats)
 
-	f.WriteString(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Scan Report</title>
+	write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Scan Report</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 body{background:#0a0e1a;color:#e0e7ff;font-family:'Segoe UI',system-ui,sans-serif;padding:20px}
@@ -316,10 +355,10 @@ body{background:#0a0e1a;color:#e0e7ff;font-family:'Segoe UI',system-ui,sans-seri
 </style></head><body>
 `)
 
-	f.WriteString(`<div class="header"><h1>Scan Report</h1><div class="sub">Post-Exploitation Credential Analysis</div></div>`)
+	write(`<div class="header"><h1>Scan Report</h1><div class="sub">Post-Exploitation Credential Analysis</div></div>`)
 
 	// Metadata
-	f.WriteString(fmt.Sprintf(`<div class="meta">
+	write(fmt.Sprintf(`<div class="meta">
 <div>Host: <span>%s</span></div>
 <div>OS: <span>%s</span></div>
 <div>User: <span>%s</span></div>
@@ -328,7 +367,7 @@ body{background:#0a0e1a;color:#e0e7ff;font-family:'Segoe UI',system-ui,sans-seri
 </div>`, meta.Hostname, meta.OS, meta.User, meta.ScanPath, meta.Timestamp))
 
 	// Stats
-	f.WriteString(fmt.Sprintf(`<div class="stats">
+	write(fmt.Sprintf(`<div class="stats">
 <div class="stat high"><div class="val">%d</div><div class="lbl">High</div></div>
 <div class="stat med"><div class="val">%d</div><div class="lbl">Medium</div></div>
 <div class="stat low"><div class="val">%d</div><div class="lbl">Low</div></div>
@@ -337,24 +376,29 @@ body{background:#0a0e1a;color:#e0e7ff;font-family:'Segoe UI',system-ui,sans-seri
 
 	// Findings by category
 	for _, cat := range cats {
-		f.WriteString(fmt.Sprintf(`<div class="cat"><div class="cat-head">%s (%d)</div>`, cat, len(grouped[cat])))
+		write(fmt.Sprintf(`<div class="cat"><div class="cat-head">%s (%d)</div>`, cat, len(grouped[cat])))
 		for _, finding := range grouped[cat] {
 			loc := finding.File
 			if finding.Line > 0 {
 				loc = fmt.Sprintf("%s:%d", finding.File, finding.Line)
 			}
-			f.WriteString(fmt.Sprintf(`<div class="finding">
+			write(fmt.Sprintf(`<div class="finding">
 <span class="badge badge-%s">%s</span>
 <span class="file">%s</span><br>
 <span class="key">%s</span> &rarr; <span class="val-text">%s</span>
 </div>`, finding.Confidence, finding.Confidence, loc, finding.Key, finding.Value))
 		}
-		f.WriteString(`</div>`)
+		write(`</div>`)
 	}
 
-	f.WriteString(`<div class="footer">Generated by PhantomHarvest</div></body></html>`)
+	write(`<div class="footer">Generated by PhantomHarvest</div></body></html>`)
 
+	if firstErr != nil {
+		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, firstErr)
+		return firstErr
+	}
 	fmt.Printf("  \033[32m[+]\033[0m Exported HTML: %s (%d findings)\n", path, len(findings))
+	return nil
 }
 
 func csvEscape(s string) string {

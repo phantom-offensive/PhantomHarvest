@@ -58,6 +58,36 @@ func getBrowserProfiles() []browserProfile {
 		}
 	}
 
+	if runtime.GOOS == "darwin" {
+		return []browserProfile{
+			{
+				name: "Chrome",
+				paths: []string{"Library/Application Support/Google/Chrome/Default"},
+				loginDB: "Login Data", histDB: "History", cookieDB: "Cookies",
+			},
+			{
+				name: "Chromium",
+				paths: []string{"Library/Application Support/Chromium/Default"},
+				loginDB: "Login Data", histDB: "History", cookieDB: "Cookies",
+			},
+			{
+				name: "Brave",
+				paths: []string{"Library/Application Support/BraveSoftware/Brave-Browser/Default"},
+				loginDB: "Login Data", histDB: "History", cookieDB: "Cookies",
+			},
+			{
+				name: "Edge",
+				paths: []string{"Library/Application Support/Microsoft Edge/Default"},
+				loginDB: "Login Data", histDB: "History", cookieDB: "Cookies",
+			},
+			{
+				name: "Firefox",
+				paths: []string{"Library/Application Support/Firefox/Profiles"},
+				loginDB: "logins.json", histDB: "places.sqlite", cookieDB: "cookies.sqlite",
+			},
+		}
+	}
+
 	// Linux paths
 	return []browserProfile{
 		{
@@ -97,7 +127,7 @@ func (s *Scanner) scanBrowsers() {
 				profileDir := filepath.Join(home, relPath)
 
 				// For Firefox, enumerate profile subdirectories
-				if browser.name == "Firefox" && strings.Contains(relPath, "Profiles") || strings.Contains(relPath, "firefox") {
+				if browser.name == "Firefox" && (strings.Contains(relPath, "Profiles") || strings.Contains(relPath, "firefox")) {
 					s.scanFirefoxProfiles(profileDir, browser)
 					continue
 				}

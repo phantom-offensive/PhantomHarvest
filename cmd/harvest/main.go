@@ -57,14 +57,14 @@ func main() {
 			harvest.OutputHTML(results, scanner.Meta, *outputFile)
 			harvest.OutputTable(results)
 			if len(results) == 0 {
-				os.Exit(1)
+				fmt.Fprintln(os.Stderr, "[*] Scan complete. 0 findings.")
 			}
 			return
 		} else {
 			harvest.OutputJSONFile(results, *outputFile)
 			harvest.OutputTable(results)
 			if len(results) == 0 {
-				os.Exit(1)
+				fmt.Fprintln(os.Stderr, "[*] Scan complete. 0 findings.")
 			}
 			return
 		}
@@ -93,7 +93,7 @@ func main() {
 	}
 
 	if len(results) == 0 {
-		os.Exit(1)
+		fmt.Fprintln(os.Stderr, "[*] Scan complete. 0 findings.")
 	}
 }
 

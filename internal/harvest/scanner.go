@@ -161,17 +161,26 @@ func (s *Scanner) Run() []Finding {
 
 	wg.Wait()
 
-	// Deduplicate
+	// Deduplicate (hold lock since goroutines may have just finished writing)
+	s.mu.Lock()
 	s.results = deduplicate(s.results)
+	results := s.results
+	s.mu.Unlock()
 
-	fmt.Printf("  \033[32m[+]\033[0m Found \033[1m%d\033[0m credentials\n\n", len(s.results))
-	return s.results
+	fmt.Printf("  \033[32m[+]\033[0m Found \033[1m%d\033[0m credentials\n\n", len(results))
+	return results
 }
 
 // scanKnownFiles checks for files that are known to contain credentials.
 func (s *Scanner) scanKnownFiles() {
 	knownFiles := map[string]string{
 		".env":                "Web App",
+		".env.local":          "Web App",
+		".env.development":    "Web App",
+		".env.production":     "Web App",
+		".env.test":           "Web App",
+		".env.example":        "Web App",
+		".env.defaults":       "Web App",
 		".pgpass":             "Database",
 		".my.cnf":             "Database",
 		".netrc":              "Auth",

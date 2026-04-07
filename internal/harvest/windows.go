@@ -1,6 +1,7 @@
 package harvest
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,6 +11,10 @@ import (
 
 	"github.com/phantom-offensive/PhantomHarvest/internal/obfuscate"
 )
+
+// validWiFiProfileName limits SSIDs passed to netsh to a safe character set,
+// preventing command injection via maliciously named profiles.
+var validWiFiProfileName = regexp.MustCompile(`^[A-Za-z0-9 _\-\.\(\)]+$`)
 
 // scanWindows runs Windows-specific credential discovery.
 func (s *Scanner) scanWindows() {
@@ -136,6 +141,10 @@ func (s *Scanner) scanWiFiPasswords() {
 			continue
 		}
 		profileName := strings.TrimSpace(match[1])
+		if !validWiFiProfileName.MatchString(profileName) {
+			fmt.Fprintf(os.Stderr, "[!] Skipping Wi-Fi profile with unsafe name: %q\n", profileName)
+			continue
+		}
 
 		// Get password for each profile
 		// Obfuscated: "netsh wlan show profile name=X key=clear"

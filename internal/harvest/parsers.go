@@ -3,6 +3,7 @@ package harvest
 import (
 	"bufio"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -112,6 +113,7 @@ func (s *Scanner) parseCredentialFile(path, category, fileType string) {
 
 	content := string(data)
 	if len(content) > 512*1024 { // Skip files > 512KB
+		fmt.Fprintf(os.Stderr, "[!] Skipping %s (%d KB) — exceeds size limit\n", path, len(content)/1024)
 		return
 	}
 
@@ -198,6 +200,7 @@ func (s *Scanner) parseTerraformState(path string) {
 	}
 
 	if len(data) > 5*1024*1024 { // Skip > 5MB
+		fmt.Fprintf(os.Stderr, "[!] Skipping %s (%d KB) — exceeds size limit\n", path, len(data)/1024)
 		return
 	}
 
@@ -255,6 +258,7 @@ func (s *Scanner) scanFileContents() {
 
 		// Skip large files
 		if info.Size() > 512*1024 {
+			fmt.Fprintf(os.Stderr, "[!] Skipping %s (%d KB) — exceeds size limit\n", path, info.Size()/1024)
 			return nil
 		}
 
@@ -298,7 +302,7 @@ func (s *Scanner) scanHistoryFiles() {
 
 	for _, home := range homes {
 		for _, histFile := range historyFiles {
-			path := home + "/" + histFile
+			path := filepath.Join(home, histFile)
 			data, err := os.ReadFile(path)
 			if err != nil {
 				continue
@@ -344,7 +348,7 @@ func (s *Scanner) scanSSHKeys() {
 
 	for _, home := range homes {
 		for _, keyFile := range keyFiles {
-			path := home + "/" + keyFile
+			path := filepath.Join(home, keyFile)
 			if _, err := os.Stat(path); err == nil {
 				ftype := "ssh_key"
 				if strings.Contains(keyFile, "authorized") {
@@ -392,8 +396,9 @@ func findHomeDirs(root string) []string {
 	var homes []string
 
 	// Check /root
-	if _, err := os.Stat(root + "/root"); err == nil {
-		homes = append(homes, root+"/root")
+	rootHome := filepath.Join(root, "root")
+	if _, err := os.Stat(rootHome); err == nil {
+		homes = append(homes, rootHome)
 	}
 	if root == "/" {
 		if _, err := os.Stat("/root"); err == nil {
@@ -402,7 +407,7 @@ func findHomeDirs(root string) []string {
 	}
 
 	// Check /home/*
-	homePath := root + "/home"
+	homePath := filepath.Join(root, "home")
 	if root == "/" {
 		homePath = "/home"
 	}
@@ -411,7 +416,7 @@ func findHomeDirs(root string) []string {
 	if err == nil {
 		for _, e := range entries {
 			if e.IsDir() {
-				homes = append(homes, homePath+"/"+e.Name())
+				homes = append(homes, filepath.Join(homePath, e.Name()))
 			}
 		}
 	}
