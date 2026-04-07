@@ -51,6 +51,7 @@ var catColors = map[string]string{
 	"Config":           colorDim,
 	"File Scan":        colorDim,
 	"Browser":          colorCyan,
+	"Browser Autofill": colorBlue,
 	"Password Manager": colorRed,
 	"WiFi":             colorGreen,
 	"RDP":              colorYellow,

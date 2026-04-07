@@ -187,8 +187,16 @@ func (s *Scanner) decryptChromiumProfile(profileDir, browserName string) bool {
 		if d.Type == "saved_password" || d.Type == "cookie" || d.Type == "credit_card" || d.Type == "autofill" {
 			any = true
 		}
+		// Route decrypted autofill (plaintext PII from Web Data.sqlite:
+		// addresses, phones, form history, etc.) into its own category
+		// so the Browser block stays focused on passwords/cookies/card
+		// findings while autofill gets its own bordered table.
+		category := d.Category
+		if d.Type == "autofill" {
+			category = "Browser Autofill"
+		}
 		s.addFinding(Finding{
-			Category: d.Category, Type: d.Type, File: d.File,
+			Category: category, Type: d.Type, File: d.File,
 			Key: d.Key, Value: d.Value, Confidence: d.Confidence,
 		})
 	}
@@ -323,25 +331,53 @@ func (s *Scanner) extractBrowserHistory(dbPath, browserName string) {
 		Confidence: ConfMedium,
 	})
 
-	// Quick scan of raw bytes for credential URLs (user:pass@host)
-	// Works without SQLite because URLs are stored as plaintext strings in the DB
+	// Quick scan of raw bytes for credential URLs (user:pass@host). The
+	// browser's History SQLite is stored uncompressed so URL strings
+	// appear as plaintext — no sqlite driver needed.
 	data, err := os.ReadFile(dbPath)
 	if err != nil || len(data) > 50*1024*1024 { // Skip > 50MB
 		return
 	}
 
-	authURLRe := regexp.MustCompile(`https?://([^:]+):([^@]+)@[a-zA-Z0-9._-]+`)
-	matches := authURLRe.FindAllStringSubmatch(string(data), 20)
+	// Strict regex: scheme://user:pass@host.tld where each piece only
+	// contains URL-safe printable ASCII of sensible length, and the host
+	// ends in a real-looking TLD (2-24 alpha chars). The old loose
+	// pattern was greedy-matching arbitrary binary blobs in SQLite pages
+	// and flagging every browsing-history URL as a HIGH credential.
+	authURLRe := regexp.MustCompile(`https?://([a-zA-Z0-9._~+-]{2,32}):([a-zA-Z0-9._~!$&*+=%-]{4,64})@([a-zA-Z0-9][a-zA-Z0-9.-]{1,63}\.[a-zA-Z]{2,24})`)
+	matches := authURLRe.FindAllStringSubmatch(string(data), 50)
+	seen := map[string]bool{}
 	for _, match := range matches {
-		if len(match) >= 3 && !isNoisy(match[2]) {
-			s.addFinding(Finding{
-				Category:   "Browser",
-				Type:       "auth_url",
-				File:       dbPath,
-				Key:        match[1],
-				Value:      truncate(match[0], 100),
-				Confidence: ConfHigh,
-			})
+		if len(match) < 4 {
+			continue
 		}
+		user, pass, host := match[1], match[2], match[3]
+		// Reject generics / placeholders.
+		if isNoisy(pass) || isNoisy(user) {
+			continue
+		}
+		// A "password" containing a slash, space, or quote is almost
+		// certainly a path segment matched accidentally.
+		if strings.ContainsAny(pass, "/\\ '\"<>`") {
+			continue
+		}
+		// Reject cases where user == pass (e.g. noise like "abc:abc").
+		if user == pass {
+			continue
+		}
+		// Deduplicate within this file.
+		key := user + "|" + host
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		s.addFinding(Finding{
+			Category:   "Browser",
+			Type:       "auth_url",
+			File:       dbPath,
+			Key:        user + "@" + host,
+			Value:      fmt.Sprintf("%s:%s", user, pass),
+			Confidence: ConfHigh,
+		})
 	}
 }
