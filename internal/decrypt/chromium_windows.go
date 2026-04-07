@@ -11,13 +11,26 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// getChromiumMasterKey reads Local State and attempts to unwrap both the
-// legacy v10 key (DPAPI-protected AES key in `os_crypt.encrypted_key`) and
-// the v20 app-bound key (`os_crypt.app_bound_encrypted_key`, introduced in
-// Chrome v127, unwrapped by calling the browser's IElevator COM service).
-//
-// Either lookup may fail independently — we return whatever we managed to
-// obtain. Failing *both* is an error.
+// enableAppBoundV20 is called from the cross-platform EnableAppBoundV20
+// wrapper. Windows: flip the gate on. Linux/macOS: no-op variant lives
+// alongside the per-OS chromium_*.go file.
+func enableAppBoundV20() { TryAppBoundV20 = true }
+
+// TryAppBoundV20 gates the Chrome v20+ app-bound key extraction path.
+// That path instantiates the browser's IElevator COM service and, on some
+// Chrome builds, crashes inside rpcrt4.dll with an access violation that
+// Go's recover() cannot catch (SEH from a syscall, not a Go panic). We
+// leave it OFF by default so the normal scan stays crash-proof; callers
+// that want to try it can set this to true. Wired up to a CLI flag.
+var TryAppBoundV20 = false
+
+// getChromiumMasterKey reads Local State and attempts to unwrap the
+// legacy v10 key (DPAPI-protected AES key in `os_crypt.encrypted_key`).
+// If TryAppBoundV20 is set, it *also* tries to unwrap the v20 app-bound
+// key (`os_crypt.app_bound_encrypted_key`, introduced in Chrome v127) by
+// calling the browser's IElevator COM service. Either lookup may fail
+// independently — we return whatever we managed to obtain. Failing
+// *both* (or only attempting v10 and failing) is an error.
 func getChromiumMasterKey(profileDir, browserName string) (*chromiumKeys, error) {
 	out := &chromiumKeys{}
 	var v10Err, v20Err error
@@ -34,10 +47,12 @@ func getChromiumMasterKey(profileDir, browserName string) (*chromiumKeys, error)
 		v10Err = err
 	}
 
-	if key, err := getChromiumAppBoundKey(profileDir, browserName); err != nil {
-		v20Err = err
-	} else {
-		out.V20 = key
+	if TryAppBoundV20 {
+		if key, err := getChromiumAppBoundKey(profileDir, browserName); err != nil {
+			v20Err = err
+		} else {
+			out.V20 = key
+		}
 	}
 
 	if out.V10 == nil && out.V20 == nil {

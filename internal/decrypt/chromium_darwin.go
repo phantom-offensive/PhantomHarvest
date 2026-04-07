@@ -33,6 +33,10 @@ func keychainServiceName(browser string) string {
 	return browser + " Safe Storage"
 }
 
+// enableAppBoundV20 is a no-op on macOS — there is no app-bound
+// encryption on this platform.
+func enableAppBoundV20() {}
+
 // getChromiumMasterKey shells out to `security find-generic-password` to
 // retrieve the keychain-stored Safe Storage password.
 // NOTE: this prompts the user for keychain access on first run — acceptable

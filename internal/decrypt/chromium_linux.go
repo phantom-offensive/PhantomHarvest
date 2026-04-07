@@ -13,6 +13,10 @@ import (
 	"golang.org/x/crypto/pbkdf2"
 )
 
+// enableAppBoundV20 is a no-op on Linux — there is no app-bound
+// encryption on this platform.
+func enableAppBoundV20() {}
+
 // getChromiumMasterKey tries the Secret Service first then falls back to
 // the literal "peanuts" password (Chromium's default when no keyring).
 // Linux Chromium has no app-bound encryption, so V20 is always nil.

@@ -13,3 +13,6 @@ func DecryptChromiumProfile(profileDir, browserName string) ([]DecryptedFinding,
 func DecryptFirefoxProfile(profileDir, browserName string) ([]DecryptedFinding, error) {
 	return nil, ErrNotCompiledIn
 }
+
+// EnableAppBoundV20 is a no-op in the stub build.
+func EnableAppBoundV20() {}
