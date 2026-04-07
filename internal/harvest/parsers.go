@@ -391,32 +391,68 @@ func (s *Scanner) scanSSHKeys() {
 	}
 }
 
-// findHomeDirs returns all home directories (and /root).
+// findHomeDirs returns every user-home-like directory under root, across
+// Linux/macOS (/home/*, /root, /Users/*) and Windows (C:\Users\*).
+//
+// It also handles the case where root *is* already a home directory
+// (e.g. -path C:\Users\Alice or -path /home/alice) by checking for the
+// telltale child folders and returning [root] itself. Without that, callers
+// like scanBrowsers/scanVaults/scanWindowsVault would silently no-op when
+// the user points us at their own profile.
 func findHomeDirs(root string) []string {
 	var homes []string
-
-	// Check /root
-	rootHome := filepath.Join(root, "root")
-	if _, err := os.Stat(rootHome); err == nil {
-		homes = append(homes, rootHome)
+	seen := map[string]bool{}
+	add := func(p string) {
+		if p == "" || seen[p] {
+			return
+		}
+		seen[p] = true
+		homes = append(homes, p)
 	}
-	if root == "/" {
-		if _, err := os.Stat("/root"); err == nil {
-			homes = append(homes, "/root")
+
+	// 1. If `root` itself looks like a home dir, include it. The heuristic
+	//    is "has at least one of these well-known child dirs."
+	homeMarkers := []string{"AppData", ".config", ".mozilla", "Library", ".ssh", "Desktop", "Documents"}
+	for _, m := range homeMarkers {
+		if st, err := os.Stat(filepath.Join(root, m)); err == nil && st.IsDir() {
+			add(root)
+			break
 		}
 	}
 
-	// Check /home/*
-	homePath := filepath.Join(root, "home")
-	if root == "/" {
-		homePath = "/home"
+	// 2. Linux/macOS: <root>/home/*, /home/*, /root, <root>/root
+	for _, base := range []string{filepath.Join(root, "home"), "/home"} {
+		if entries, err := os.ReadDir(base); err == nil {
+			for _, e := range entries {
+				if e.IsDir() {
+					add(filepath.Join(base, e.Name()))
+				}
+			}
+		}
+		if root != "/" && base == "/home" {
+			break // don't double-walk /home unless we explicitly went there
+		}
+	}
+	for _, p := range []string{filepath.Join(root, "root"), "/root"} {
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			add(p)
+		}
 	}
 
-	entries, err := os.ReadDir(homePath)
-	if err == nil {
-		for _, e := range entries {
-			if e.IsDir() {
-				homes = append(homes, filepath.Join(homePath, e.Name()))
+	// 3. Windows-style and macOS Users directory: <root>\Users\*, /Users/*
+	for _, base := range []string{filepath.Join(root, "Users"), "/Users"} {
+		if entries, err := os.ReadDir(base); err == nil {
+			for _, e := range entries {
+				if !e.IsDir() {
+					continue
+				}
+				name := e.Name()
+				// Skip junctions / system profiles that aren't real users.
+				switch name {
+				case "Public", "Default", "Default User", "All Users", "WDAGUtilityAccount", "Shared":
+					continue
+				}
+				add(filepath.Join(base, name))
 			}
 		}
 	}
