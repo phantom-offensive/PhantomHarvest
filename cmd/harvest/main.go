@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/phantom-offensive/PhantomHarvest/internal/decrypt"
 	"github.com/phantom-offensive/PhantomHarvest/internal/harvest"
 	"github.com/phantom-offensive/PhantomHarvest/internal/obfuscate"
 )
@@ -24,6 +25,7 @@ func main() {
 	highOnly := flag.Bool("high-only", false, "Only show HIGH confidence findings")
 	maxDepth := flag.Int("depth", 20, "Maximum directory depth")
 	exclude := flag.String("exclude", "", "Comma-separated paths to exclude (e.g. TikTok,Discord)")
+	decryptBrowsers := flag.Bool("decrypt-browsers", false, "Inline-decrypt browser passwords/cookies/cards (requires -tags decrypt build)")
 	flag.Parse()
 
 	if !*quiet {
@@ -33,6 +35,12 @@ func main() {
 	scanner := harvest.NewScanner(*rootDir, *maxDepth)
 	if *exclude != "" {
 		scanner.AddExcludes(strings.Split(*exclude, ","))
+	}
+	if *decryptBrowsers {
+		if !decrypt.Enabled() {
+			fmt.Fprintln(os.Stderr, "[!] Decryption support not compiled in. Rebuild with: make build-full")
+		}
+		scanner.DecryptBrowsers = true
 	}
 	results := scanner.Run()
 

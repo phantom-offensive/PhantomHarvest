@@ -1,4 +1,6 @@
 build/
 phantom-harvest
 phantom-harvest.exe
+harvest
+harvest.exe
 *.tmp

@@ -36,6 +36,10 @@ A post-exploitation credential harvesting tool. Drop it on a target, run it, get
 - Browser encryption keys (`Local State`)
 - History scanning for URLs with embedded credentials (`user:pass@host`)
 - Cookie databases (session hijacking)
+- **Inline decryption** of Chromium passwords/cookies/credit cards/autofill and
+  Firefox `logins.json` (no master password) — pass `-decrypt-browsers` to a
+  binary built with `make build-full` (or any `*-full` target). See
+  [Inline Browser Decryption](#inline-browser-decryption) below.
 
 ### Password Managers
 - KeePass vaults (`.kdbx`, `.kdb`)
@@ -124,6 +128,43 @@ make garble-all
 - Use `-quiet -json` flags to avoid terminal output
 - Pipe JSON to a file and exfiltrate separately
 
+## Inline Browser Decryption
+
+The default `make build` produces a small, dependency-free binary that only
+*locates* browser credential databases. To actually pull plaintext passwords,
+cookies, credit cards, and autofill data out of Chromium-family browsers and
+Firefox, build with the `decrypt` build tag:
+
+```bash
+# Build a binary with inline decryption support
+make build-full          # current OS
+make linux-full          # Linux amd64
+make windows-full        # Windows amd64
+make garble-windows-full # obfuscated + decrypt
+
+# Run with the new flag
+./phantom-harvest -path / -decrypt-browsers -high-only
+```
+
+**What it decrypts (per-OS, no external tooling):**
+
+| Source | Linux | macOS | Windows |
+|---|---|---|---|
+| Chromium saved passwords | yes (libsecret + `peanuts` fallback) | yes (Keychain) | yes (DPAPI) |
+| Chromium cookies (`Cookies` and `Network/Cookies`) | yes | yes | yes |
+| Chromium credit cards + autofill (`Web Data`) | yes | yes | yes |
+| Firefox `logins.json` (empty master password) | yes | yes | yes |
+
+Decryption uses `modernc.org/sqlite` (pure-Go, no CGO) so the resulting binary
+is still a single static executable. If a Chromium master key cannot be
+unwrapped (e.g. no keyring) or a Firefox profile has a master password set,
+PhantomHarvest emits a `decrypt_failed` finding instead of crashing and falls
+back to discovery-only output for that profile.
+
+The default (non-`decrypt`) build keeps the binary tiny and ships zero
+crypto/sqlite dependencies — useful when you only need recon and want to keep
+the dropper small.
+
 ## Usage
 
 ```
@@ -136,6 +177,8 @@ Options:
   -json             Output as JSON
   -quiet            No banner output
   -exclude string   Comma-separated paths to exclude
+  -decrypt-browsers Inline-decrypt browser passwords/cookies/cards
+                    (requires a binary built with `make build-full`)
 ```
 
 ## Example Output

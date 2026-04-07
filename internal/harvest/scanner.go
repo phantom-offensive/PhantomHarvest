@@ -21,11 +21,12 @@ type ScanMeta struct {
 
 // Scanner walks the filesystem looking for credentials.
 type Scanner struct {
-	root     string
-	maxDepth int
-	results  []Finding
-	mu       sync.Mutex
-	Meta     ScanMeta
+	root            string
+	maxDepth        int
+	results         []Finding
+	mu              sync.Mutex
+	Meta            ScanMeta
+	DecryptBrowsers bool
 }
 
 // Confidence levels for findings
