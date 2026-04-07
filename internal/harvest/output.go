@@ -4,9 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 )
+
+// absPath returns the absolute version of p, or p unchanged on failure.
+// Used so the "Exported …" success line always shows where the file
+// actually landed, not whatever relative path the user typed.
+func absPath(p string) string {
+	if abs, err := filepath.Abs(p); err == nil {
+		return abs
+	}
+	return p
+}
 
 // Color codes
 const (
@@ -185,7 +196,7 @@ func OutputJSONFile(findings []Finding, path string) error {
 		fmt.Fprintf(os.Stderr, "  [-] Error encoding JSON to %s: %v\n", path, err)
 		return err
 	}
-	fmt.Printf("  \033[32m[+]\033[0m Exported JSON: %s (%d findings)\n", path, len(findings))
+	fmt.Printf("  \033[32m[+]\033[0m Exported JSON: %s (%d findings)\n", absPath(path), len(findings))
 	return nil
 }
 
@@ -226,7 +237,7 @@ func OutputCSV(findings []Finding, path string) error {
 		}
 	}
 
-	fmt.Printf("  \033[32m[+]\033[0m Exported CSV: %s (%d findings)\n", path, len(findings))
+	fmt.Printf("  \033[32m[+]\033[0m Exported CSV: %s (%d findings)\n", absPath(path), len(findings))
 	return nil
 }
 
@@ -288,7 +299,7 @@ func OutputTXT(findings []Finding, path string) error {
 		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, firstErr)
 		return firstErr
 	}
-	fmt.Printf("  \033[32m[+]\033[0m Exported TXT: %s (%d findings)\n", path, len(findings))
+	fmt.Printf("  \033[32m[+]\033[0m Exported TXT: %s (%d findings)\n", absPath(path), len(findings))
 	return nil
 }
 
@@ -397,7 +408,7 @@ body{background:#0a0e1a;color:#e0e7ff;font-family:'Segoe UI',system-ui,sans-seri
 		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, firstErr)
 		return firstErr
 	}
-	fmt.Printf("  \033[32m[+]\033[0m Exported HTML: %s (%d findings)\n", path, len(findings))
+	fmt.Printf("  \033[32m[+]\033[0m Exported HTML: %s (%d findings)\n", absPath(path), len(findings))
 	return nil
 }
 
