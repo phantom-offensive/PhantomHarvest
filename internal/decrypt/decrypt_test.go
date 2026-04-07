@@ -37,7 +37,8 @@ func TestChromiumLinuxRoundTrip(t *testing.T) {
 	enc := append([]byte("v10"), ct...)
 
 	// Round-trip directly through chromiumDecryptValue.
-	got, err := chromiumDecryptValue(enc, key)
+	keys := &chromiumKeys{V10: key}
+	got, err := chromiumDecryptValue(enc, keys)
 	if err != nil {
 		t.Fatalf("decrypt: %v", err)
 	}
@@ -60,7 +61,7 @@ func TestChromiumLinuxRoundTrip(t *testing.T) {
 	}
 	db.Close()
 
-	findings, err := decryptChromiumLogins(dbPath, key, "TestBrowser")
+	findings, err := decryptChromiumLogins(dbPath, keys, "TestBrowser")
 	if err != nil {
 		t.Fatalf("decryptChromiumLogins: %v", err)
 	}

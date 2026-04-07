@@ -97,28 +97,6 @@ func OutputTable(findings []Finding) {
 		confCounts[f.Confidence]++
 	}
 
-	// Print summary
-	fmt.Printf("  %s╔═══════════════════════════════════════════════════════════╗%s\n", colorPurple, colorReset)
-	fmt.Printf("  %s║  SCAN SUMMARY                                             ║%s\n", colorPurple, colorReset)
-	fmt.Printf("  %s╠═══════════════════════════════════════════════════════════╣%s\n", colorPurple, colorReset)
-	fmt.Printf("  %s║%s  %sHIGH%s: %-4d  %sMEDIUM%s: %-4d  %sLOW%s: %-4d  TOTAL: %-4d     %s║%s\n",
-		colorPurple, colorReset,
-		colorRed, colorReset, confCounts["HIGH"],
-		colorYellow, colorReset, confCounts["MEDIUM"],
-		colorDim, colorReset, confCounts["LOW"],
-		len(findings),
-		colorPurple, colorReset)
-	fmt.Printf("  %s╠═══════════════════════════════════════════════════════════╣%s\n", colorPurple, colorReset)
-	for _, cat := range cats {
-		color := catColors[cat]
-		if color == "" {
-			color = colorDim
-		}
-		fmt.Printf("  %s║%s  %-20s %s%3d findings%s                          %s║%s\n",
-			colorPurple, colorReset, cat, color, len(grouped[cat]), colorReset, colorPurple, colorReset)
-	}
-	fmt.Printf("  %s╚═══════════════════════════════════════════════════════════╝%s\n\n", colorPurple, colorReset)
-
 	// Print details per category
 	for _, cat := range cats {
 		color := catColors[cat]
@@ -163,6 +141,28 @@ func OutputTable(findings []Finding) {
 				valueColor, f.Value, colorReset)
 		}
 	}
+
+	// Print summary at the end so it's the last thing the user sees.
+	fmt.Printf("  %s╔═══════════════════════════════════════════════════════════╗%s\n", colorPurple, colorReset)
+	fmt.Printf("  %s║  SCAN SUMMARY                                             ║%s\n", colorPurple, colorReset)
+	fmt.Printf("  %s╠═══════════════════════════════════════════════════════════╣%s\n", colorPurple, colorReset)
+	fmt.Printf("  %s║%s  %sHIGH%s: %-4d  %sMEDIUM%s: %-4d  %sLOW%s: %-4d  TOTAL: %-4d     %s║%s\n",
+		colorPurple, colorReset,
+		colorRed, colorReset, confCounts["HIGH"],
+		colorYellow, colorReset, confCounts["MEDIUM"],
+		colorDim, colorReset, confCounts["LOW"],
+		len(findings),
+		colorPurple, colorReset)
+	fmt.Printf("  %s╠═══════════════════════════════════════════════════════════╣%s\n", colorPurple, colorReset)
+	for _, cat := range cats {
+		color := catColors[cat]
+		if color == "" {
+			color = colorDim
+		}
+		fmt.Printf("  %s║%s  %-20s %s%3d findings%s                          %s║%s\n",
+			colorPurple, colorReset, cat, color, len(grouped[cat]), colorReset, colorPurple, colorReset)
+	}
+	fmt.Printf("  %s╚═══════════════════════════════════════════════════════════╝%s\n\n", colorPurple, colorReset)
 }
 
 // OutputJSON prints findings as JSON to stdout.

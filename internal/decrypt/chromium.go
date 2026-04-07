@@ -44,7 +44,7 @@ func readLocalStateKey(profileDir string) ([]byte, error) {
 // The masterKey is obtained per-OS (DPAPI on Windows, libsecret/peanuts
 // on Linux, Keychain on macOS).
 func DecryptChromiumProfile(profileDir, browserName string) ([]DecryptedFinding, error) {
-	key, err := getChromiumMasterKey(profileDir, browserName)
+	keys, err := getChromiumMasterKey(profileDir, browserName)
 	if err != nil {
 		return []DecryptedFinding{{
 			Category:   "Browser",
@@ -58,18 +58,33 @@ func DecryptChromiumProfile(profileDir, browserName string) ([]DecryptedFinding,
 
 	var out []DecryptedFinding
 
+	// Note which keys we ended up with so the user can tell from the
+	// output whether the app-bound bypass succeeded.
+	keyMsg := "v10 only"
+	if keys.V20 != nil {
+		keyMsg = "v10 + v20 (app-bound)"
+	}
+	out = append(out, DecryptedFinding{
+		Category:   "Browser",
+		Type:       "decrypt_keys",
+		File:       profileDir,
+		Key:        browserName + " master keys",
+		Value:      keyMsg,
+		Confidence: ConfLow,
+	})
+
 	// Saved logins
-	if logins, err := decryptChromiumLogins(filepath.Join(profileDir, "Login Data"), key, browserName); err == nil {
+	if logins, err := decryptChromiumLogins(filepath.Join(profileDir, "Login Data"), keys, browserName); err == nil {
 		out = append(out, logins...)
 	}
 	// Cookies
-	if cookies, err := decryptChromiumCookies(filepath.Join(profileDir, "Network", "Cookies"), key, browserName); err == nil {
+	if cookies, err := decryptChromiumCookies(filepath.Join(profileDir, "Network", "Cookies"), keys, browserName); err == nil {
 		out = append(out, cookies...)
-	} else if cookies, err := decryptChromiumCookies(filepath.Join(profileDir, "Cookies"), key, browserName); err == nil {
+	} else if cookies, err := decryptChromiumCookies(filepath.Join(profileDir, "Cookies"), keys, browserName); err == nil {
 		out = append(out, cookies...)
 	}
 	// Credit cards & autofill
-	if cards, err := decryptChromiumWebData(filepath.Join(profileDir, "Web Data"), key, browserName); err == nil {
+	if cards, err := decryptChromiumWebData(filepath.Join(profileDir, "Web Data"), keys, browserName); err == nil {
 		out = append(out, cards...)
 	}
 
@@ -86,7 +101,7 @@ func DecryptChromiumProfile(profileDir, browserName string) ([]DecryptedFinding,
 	return out, nil
 }
 
-func decryptChromiumLogins(dbPath string, key []byte, browser string) ([]DecryptedFinding, error) {
+func decryptChromiumLogins(dbPath string, keys *chromiumKeys, browser string) ([]DecryptedFinding, error) {
 	if _, err := os.Stat(dbPath); err != nil {
 		return nil, err
 	}
@@ -109,7 +124,7 @@ func decryptChromiumLogins(dbPath string, key []byte, browser string) ([]Decrypt
 		if err := rows.Scan(&url, &user, &enc); err != nil {
 			continue
 		}
-		pw, err := chromiumDecryptValue(enc, key)
+		pw, err := chromiumDecryptValue(enc, keys)
 		if err != nil || len(pw) == 0 {
 			continue
 		}
@@ -125,7 +140,7 @@ func decryptChromiumLogins(dbPath string, key []byte, browser string) ([]Decrypt
 	return out, nil
 }
 
-func decryptChromiumCookies(dbPath string, key []byte, browser string) ([]DecryptedFinding, error) {
+func decryptChromiumCookies(dbPath string, keys *chromiumKeys, browser string) ([]DecryptedFinding, error) {
 	if _, err := os.Stat(dbPath); err != nil {
 		return nil, err
 	}
@@ -149,7 +164,7 @@ func decryptChromiumCookies(dbPath string, key []byte, browser string) ([]Decryp
 		if err := rows.Scan(&host, &name, &enc, &expires); err != nil {
 			continue
 		}
-		val, err := chromiumDecryptValue(enc, key)
+		val, err := chromiumDecryptValue(enc, keys)
 		if err != nil || len(val) == 0 {
 			continue
 		}
@@ -165,7 +180,7 @@ func decryptChromiumCookies(dbPath string, key []byte, browser string) ([]Decryp
 	return out, nil
 }
 
-func decryptChromiumWebData(dbPath string, key []byte, browser string) ([]DecryptedFinding, error) {
+func decryptChromiumWebData(dbPath string, keys *chromiumKeys, browser string) ([]DecryptedFinding, error) {
 	if _, err := os.Stat(dbPath); err != nil {
 		return nil, err
 	}
@@ -186,7 +201,7 @@ func decryptChromiumWebData(dbPath string, key []byte, browser string) ([]Decryp
 			if err := rows.Scan(&name, &month, &year, &enc); err != nil {
 				continue
 			}
-			num, err := chromiumDecryptValue(enc, key)
+			num, err := chromiumDecryptValue(enc, keys)
 			if err != nil {
 				continue
 			}

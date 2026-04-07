@@ -15,12 +15,13 @@ import (
 
 // getChromiumMasterKey tries the Secret Service first then falls back to
 // the literal "peanuts" password (Chromium's default when no keyring).
-func getChromiumMasterKey(profileDir, browserName string) ([]byte, error) {
+// Linux Chromium has no app-bound encryption, so V20 is always nil.
+func getChromiumMasterKey(profileDir, browserName string) (*chromiumKeys, error) {
 	password := lookupSecretService(browserName)
 	if password == "" {
 		password = "peanuts"
 	}
-	return pbkdf2.Key([]byte(password), []byte("saltysalt"), 1, 16, sha1.New), nil
+	return &chromiumKeys{V10: pbkdf2.Key([]byte(password), []byte("saltysalt"), 1, 16, sha1.New)}, nil
 }
 
 // lookupSecretService queries org.freedesktop.secrets for the browser's
@@ -65,13 +66,14 @@ func lookupSecretService(browserName string) string {
 
 // chromiumDecryptValue: AES-CBC with 16-space IV, PBKDF2-derived key,
 // strip 3-byte v10/v11 prefix.
-func chromiumDecryptValue(blob, key []byte) ([]byte, error) {
+func chromiumDecryptValue(blob []byte, keys *chromiumKeys) ([]byte, error) {
 	if len(blob) < 3 {
 		return nil, fmt.Errorf("blob too short")
 	}
 	if bytes.Equal(blob[:3], []byte("v10")) || bytes.Equal(blob[:3], []byte("v11")) {
 		blob = blob[3:]
 	}
+	key := keys.V10
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return nil, err
