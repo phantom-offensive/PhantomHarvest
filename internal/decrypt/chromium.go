@@ -43,7 +43,22 @@ func readLocalStateKey(profileDir string) ([]byte, error) {
 // and autofill data from a Chromium-family browser profile directory.
 // The masterKey is obtained per-OS (DPAPI on Windows, libsecret/peanuts
 // on Linux, Keychain on macOS).
-func DecryptChromiumProfile(profileDir, browserName string) ([]DecryptedFinding, error) {
+func DecryptChromiumProfile(profileDir, browserName string) (result []DecryptedFinding, err error) {
+	// Any panic inside the per-OS decrypt machinery (COM interop on
+	// Windows in particular) must not take down the rest of the scan.
+	defer func() {
+		if r := recover(); r != nil {
+			result = []DecryptedFinding{{
+				Category:   "Browser",
+				Type:       "decrypt_failed",
+				File:       profileDir,
+				Key:        browserName + " profile",
+				Value:      fmt.Sprintf("(panic: %v)", r),
+				Confidence: ConfMedium,
+			}}
+			err = nil
+		}
+	}()
 	keys, err := getChromiumMasterKey(profileDir, browserName)
 	if err != nil {
 		return []DecryptedFinding{{

