@@ -71,6 +71,160 @@ var confColors = map[string]string{
 	"LOW":    colorDim,
 }
 
+// Column widths for the findings table. Inner content width is the sum
+// plus 3 chars (" │ ") between each column plus 2 chars ("│ " / " │") at
+// the outer edges — change this together with drawTableBorder/drawRow.
+const (
+	colConf  = 6  // "HIGH  " / "MEDIUM" / "LOW   "
+	colKey   = 28 // credential name / finding key
+	colValue = 46 // credential value (the meat)
+	colFile  = 36 // file path + :line
+)
+
+// tableInner is the visible width of content (all columns + separators).
+const tableInner = colConf + 3 + colKey + 3 + colValue + 3 + colFile
+
+// truncRunes trims s to n visible runes, adding an ellipsis if cut.
+// We count runes rather than bytes so multibyte characters don't blow
+// column alignment.
+func truncRunes(s string, n int) string {
+	rs := []rune(s)
+	if len(rs) <= n {
+		return s
+	}
+	if n <= 1 {
+		return string(rs[:n])
+	}
+	return string(rs[:n-1]) + "…"
+}
+
+// padRunes right-pads s with spaces so it has exactly n visible runes.
+func padRunes(s string, n int) string {
+	rs := []rune(s)
+	if len(rs) >= n {
+		return s
+	}
+	return s + strings.Repeat(" ", n-len(rs))
+}
+
+// cell renders a table cell: truncate to width, pad to width, wrap in
+// color codes. The ANSI escapes are added *after* padding so that
+// sprintf-style width formatting lines up correctly.
+func cell(s string, width int, color string) string {
+	s = truncRunes(s, width)
+	s = padRunes(s, width)
+	return color + s + colorReset
+}
+
+// border produces a full horizontal rule with column separators at the
+// right positions. `left`, `mid`, `right` pick the corner characters;
+// pass "├", "┼", "┤" for a cross-row separator or "╭", "┬", "╮" for a
+// top rule with columns.
+func border(left, fill, mid, right string, widths ...int) string {
+	var b strings.Builder
+	b.WriteString(colorDim)
+	b.WriteString(left)
+	for i, w := range widths {
+		b.WriteString(strings.Repeat(fill, w+2))
+		if i < len(widths)-1 {
+			b.WriteString(mid)
+		}
+	}
+	b.WriteString(right)
+	b.WriteString(colorReset)
+	return b.String()
+}
+
+// catHeader draws the titled top rule of a category block, like:
+//
+//	╭─ Browser (2822 findings) ───────────────────...───╮
+func catHeader(cat string, count int, catColor string) string {
+	title := fmt.Sprintf(" %s%s%s (%d findings) ", catColor, cat, colorReset, count)
+	// Visible width of the title (without ANSI).
+	visible := len(cat) + len(fmt.Sprintf(" (%d findings) ", count))
+	// tableInner + 2 (outer " "s) = full inner width of the box.
+	total := tableInner + 2
+	dashes := total - visible - 3 // minus ╭─ and ╮
+	if dashes < 0 {
+		dashes = 0
+	}
+	return fmt.Sprintf("%s%s─%s%s%s%s%s",
+		colorDim, "╭", colorReset,
+		title,
+		colorDim, strings.Repeat("─", dashes)+"╮", colorReset)
+}
+
+// catFooter closes a category block.
+func catFooter() string {
+	total := tableInner + 2
+	return colorDim + "╰" + strings.Repeat("─", total-2) + "╯" + colorReset
+}
+
+// cleanOneLine flattens any embedded newlines/tabs/control chars into
+// single spaces so a single finding never blows up the box alignment.
+// Also collapses runs of whitespace.
+func cleanOneLine(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	prevSpace := false
+	for _, r := range s {
+		if r < 0x20 || r == 0x7f {
+			r = ' '
+		}
+		if r == ' ' {
+			if prevSpace {
+				continue
+			}
+			prevSpace = true
+		} else {
+			prevSpace = false
+		}
+		b.WriteRune(r)
+	}
+	return strings.TrimSpace(b.String())
+}
+
+// row formats one finding as a table row.
+func row(f Finding) string {
+	confColor := confColors[f.Confidence]
+	if confColor == "" {
+		confColor = colorDim
+	}
+
+	// Pick the value color. Highest-confidence real creds are bold red;
+	// hashes yellow; everything else green so the colour guides the eye
+	// straight to the dangerous ones.
+	valueColor := colorGreen
+	if f.Category == "Hash" {
+		valueColor = colorYellow
+	}
+	if f.Confidence == "HIGH" || strings.Contains(f.Value, "UNENCRYPTED") {
+		valueColor = colorBold + colorRed
+	} else if f.Confidence == "MEDIUM" {
+		valueColor = colorYellow
+	} else {
+		valueColor = colorDim
+	}
+
+	// Build the file-location string (path + optional :line, trimmed to
+	// show the tail of the path which is the identifying part).
+	loc := f.File
+	if f.Line > 0 {
+		loc = fmt.Sprintf("%s:%d", loc, f.Line)
+	}
+	if rs := []rune(loc); len(rs) > colFile {
+		loc = "…" + string(rs[len(rs)-colFile+1:])
+	}
+
+	bar := colorDim + "│" + colorReset
+	return fmt.Sprintf("%s %s %s %s %s %s %s %s %s",
+		bar, cell(cleanOneLine(f.Confidence), colConf, colorBold+confColor),
+		bar, cell(cleanOneLine(f.Key), colKey, colorCyan),
+		bar, cell(cleanOneLine(f.Value), colValue, valueColor),
+		bar, cell(cleanOneLine(loc), colFile, colorDim),
+		bar)
+}
+
 // OutputTable prints findings as a formatted terminal table.
 func OutputTable(findings []Finding) {
 	if len(findings) == 0 {
@@ -97,72 +251,93 @@ func OutputTable(findings []Finding) {
 		confCounts[f.Confidence]++
 	}
 
-	// Print details per category
+	// Print one bordered table per category. Inside each table, sort so
+	// HIGH confidence rows come first — the user should see the
+	// dangerous stuff at the top of each block.
+	confRank := map[string]int{"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+	for _, cat := range cats {
+		catColor := catColors[cat]
+		if catColor == "" {
+			catColor = colorDim
+		}
+		rows := grouped[cat]
+		sort.SliceStable(rows, func(i, j int) bool {
+			return confRank[rows[i].Confidence] < confRank[rows[j].Confidence]
+		})
+
+		fmt.Println()
+		fmt.Println("  " + catHeader(cat, len(rows), catColor+colorBold))
+		// Column-header row.
+		fmt.Println("  " + row(Finding{
+			Confidence: "CONF",
+			Key:        "KEY",
+			Value:      "VALUE",
+			File:       "LOCATION",
+		}))
+		fmt.Println("  " + border("├", "─", "┼", "┤", colConf, colKey, colValue, colFile))
+		for _, f := range rows {
+			fmt.Println("  " + row(f))
+		}
+		fmt.Println("  " + catFooter())
+	}
+
+	// Print the final SCAN SUMMARY block. Uses the same bordered style
+	// as the per-category tables so the whole report looks consistent.
+	// The summary is a single-column table whose cell width equals the
+	// full inner content width of a category row (so borders line up).
+	summaryInner := tableInner // full content width, no column splits
+
+	fmt.Println()
+	// Top rule with title.
+	title := fmt.Sprintf(" %sSCAN SUMMARY%s ", colorBold+colorPurple, colorReset)
+	visible := len(" SCAN SUMMARY ")
+	dashes := summaryInner + 2 - visible - 3
+	if dashes < 0 {
+		dashes = 0
+	}
+	fmt.Printf("  %s╭─%s%s%s%s%s\n",
+		colorDim, colorReset, title,
+		colorDim, strings.Repeat("─", dashes)+"╮", colorReset)
+
+	// Stat row. Build the text without colour, measure its rune length
+	// for padding, then inject colour around the numbers.
+	bar := colorDim + "│" + colorReset
+	plainStat := fmt.Sprintf("  HIGH: %-4d   MEDIUM: %-4d   LOW: %-4d   TOTAL: %-4d",
+		confCounts["HIGH"], confCounts["MEDIUM"], confCounts["LOW"], len(findings))
+	coloredStat := fmt.Sprintf("  %sHIGH%s: %s%-4d%s   %sMEDIUM%s: %s%-4d%s   %sLOW%s: %s%-4d%s   %sTOTAL%s: %s%-4d%s",
+		colorBold+colorRed, colorReset, colorRed, confCounts["HIGH"], colorReset,
+		colorBold+colorYellow, colorReset, colorYellow, confCounts["MEDIUM"], colorReset,
+		colorBold+colorDim, colorReset, colorDim, confCounts["LOW"], colorReset,
+		colorBold, colorReset, colorBold, len(findings), colorReset)
+	pad := summaryInner - len([]rune(plainStat))
+	if pad < 0 {
+		pad = 0
+	}
+	fmt.Printf("  %s %s%s %s\n", bar, coloredStat, strings.Repeat(" ", pad), bar)
+
+	// Mid rule.
+	fmt.Println("  " + colorDim + "├" + strings.Repeat("─", summaryInner+2) + "┤" + colorReset)
+
+	// Per-category tally rows.
 	for _, cat := range cats {
 		color := catColors[cat]
 		if color == "" {
 			color = colorDim
 		}
-
-		fmt.Printf("  %s%s── %s (%d) ──%s\n\n", color, colorBold, cat, len(grouped[cat]), colorReset)
-
-		for _, f := range grouped[cat] {
-			// Confidence badge
-			confColor := confColors[f.Confidence]
-			if confColor == "" {
-				confColor = colorDim
-			}
-			badge := fmt.Sprintf("[%s]", f.Confidence)
-
-			// File path
-			fmt.Printf("    %s%-8s%s %s%s%s", confColor, badge, colorReset, colorDim, f.File, colorReset)
-			if f.Line > 0 {
-				fmt.Printf("%s:%d%s", colorDim, f.Line, colorReset)
-			}
-			fmt.Println()
-
-			// Key = Value
-			displayKey := f.Key
-			if len(displayKey) > 40 {
-				displayKey = displayKey[:40] + "..."
-			}
-
-			valueColor := colorGreen
-			if f.Category == "Hash" {
-				valueColor = colorYellow
-			}
-			if strings.Contains(f.Value, "UNENCRYPTED") || f.Confidence == "HIGH" {
-				valueColor = colorRed
-			}
-
-			fmt.Printf("             %s%-20s%s %s→%s %s%s%s\n\n",
-				colorCyan, displayKey, colorReset,
-				colorDim, colorReset,
-				valueColor, f.Value, colorReset)
+		plain := fmt.Sprintf("  %-24s  %4d findings", cat, len(grouped[cat]))
+		colored := fmt.Sprintf("  %s%-24s%s  %s%4d findings%s",
+			color+colorBold, cat, colorReset,
+			color, len(grouped[cat]), colorReset)
+		pad := summaryInner - len([]rune(plain))
+		if pad < 0 {
+			pad = 0
 		}
+		fmt.Printf("  %s %s%s %s\n", bar, colored, strings.Repeat(" ", pad), bar)
 	}
 
-	// Print summary at the end so it's the last thing the user sees.
-	fmt.Printf("  %s╔═══════════════════════════════════════════════════════════╗%s\n", colorPurple, colorReset)
-	fmt.Printf("  %s║  SCAN SUMMARY                                             ║%s\n", colorPurple, colorReset)
-	fmt.Printf("  %s╠═══════════════════════════════════════════════════════════╣%s\n", colorPurple, colorReset)
-	fmt.Printf("  %s║%s  %sHIGH%s: %-4d  %sMEDIUM%s: %-4d  %sLOW%s: %-4d  TOTAL: %-4d     %s║%s\n",
-		colorPurple, colorReset,
-		colorRed, colorReset, confCounts["HIGH"],
-		colorYellow, colorReset, confCounts["MEDIUM"],
-		colorDim, colorReset, confCounts["LOW"],
-		len(findings),
-		colorPurple, colorReset)
-	fmt.Printf("  %s╠═══════════════════════════════════════════════════════════╣%s\n", colorPurple, colorReset)
-	for _, cat := range cats {
-		color := catColors[cat]
-		if color == "" {
-			color = colorDim
-		}
-		fmt.Printf("  %s║%s  %-20s %s%3d findings%s                          %s║%s\n",
-			colorPurple, colorReset, cat, color, len(grouped[cat]), colorReset, colorPurple, colorReset)
-	}
-	fmt.Printf("  %s╚═══════════════════════════════════════════════════════════╝%s\n\n", colorPurple, colorReset)
+	// Bottom rule.
+	fmt.Println("  " + colorDim + "╰" + strings.Repeat("─", summaryInner+2) + "╯" + colorReset)
+	fmt.Println()
 }
 
 // OutputJSON prints findings as JSON to stdout.
