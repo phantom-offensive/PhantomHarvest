@@ -242,7 +242,7 @@ func (s *Scanner) decryptChromiumProfile(profileDir, browserName string) bool {
 			Type:       "v20_locked",
 			File:       profileDir,
 			Key:        browserName + " passwords",
-			Value:      "v20 app-bound encrypted — IElevator bypass required (run as SYSTEM, or use -chrome-key with key from memory dump)",
+			Value:      "v20 app-bound encrypted — memory scan failed (Chrome must be running); try: keep browser open and re-run, run as SYSTEM, or use -chrome-key",
 			Confidence: ConfMedium,
 		})
 	}

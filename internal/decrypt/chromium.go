@@ -137,7 +137,7 @@ func DecryptChromiumProfile(profileDir, browserName string) (result []DecryptedF
 	case keys.V20 != nil:
 		keyMsg = "v20 only (app-bound)"
 	case keys.V10 != nil:
-		keyMsg = "v10 only (v20/IElevator failed — try: run as SYSTEM, or use -chrome-key with key from memory dump)"
+		keyMsg = "v10 only (v20 failed — IElevator blocked + Chrome not running for memory scan; try: run as SYSTEM, or use -chrome-key)"
 	}
 	out = append(out, DecryptedFinding{
 		Category:   "Browser",

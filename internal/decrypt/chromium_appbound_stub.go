@@ -9,3 +9,8 @@ const SubprocessModeFlag = "--_phantom-v20"
 
 // ExtractAndPrintAppBoundKey is a no-op on non-Windows platforms.
 func ExtractAndPrintAppBoundKey(_, _ string) {}
+
+// ScanChromeProcessMemory is a no-op on non-Windows platforms.
+func ScanChromeProcessMemory(_, _ string) ([]byte, error) {
+	return nil, nil
+}

