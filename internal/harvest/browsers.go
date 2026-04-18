@@ -124,9 +124,12 @@ func (s *Scanner) scanBrowsers() {
 	homes := findHomeDirs(s.root)
 	profiles := getBrowserProfiles()
 
-	// Apply domain filter to the decrypt package before scanning.
+	// Apply domain filter and logins-only to the decrypt package before scanning.
 	if s.DomainFilter != "" {
 		decrypt.SetDomainFilter(s.DomainFilter)
+	}
+	if s.LoginsOnly {
+		decrypt.SetLoginsOnly(true)
 	}
 
 	for _, home := range homes {

@@ -41,6 +41,13 @@ func SetDomainFilter(domain string) {
 	domainFilter = strings.ToLower(domain)
 }
 
+// loginsOnly gates autofill/credit card extraction — when true, only saved
+// passwords are extracted from Chromium profiles.
+var loginsOnly bool
+
+// SetLoginsOnly enables logins-only mode, skipping autofill and credit cards.
+func SetLoginsOnly(v bool) { loginsOnly = v }
+
 // getMasterKeyForProfile resolves the Chromium master key for a profile,
 // preferring caller-supplied keys over OS-specific retrieval.
 //
@@ -147,9 +154,11 @@ func DecryptChromiumProfile(profileDir, browserName string) (result []DecryptedF
 	} else if cookies, err := decryptChromiumCookies(filepath.Join(profileDir, "Cookies"), keys, browserName); err == nil {
 		out = append(out, cookies...)
 	}
-	// Credit cards & autofill
-	if cards, err := decryptChromiumWebData(filepath.Join(profileDir, "Web Data"), keys, browserName); err == nil {
-		out = append(out, cards...)
+	// Credit cards & autofill (skipped in logins-only mode)
+	if !loginsOnly {
+		if cards, err := decryptChromiumWebData(filepath.Join(profileDir, "Web Data"), keys, browserName); err == nil {
+			out = append(out, cards...)
+		}
 	}
 
 	if len(out) == 0 {

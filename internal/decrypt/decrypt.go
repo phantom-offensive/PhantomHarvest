@@ -25,3 +25,6 @@ func SetDPAPIMasterKey(_ string) error { return ErrNotCompiledIn }
 
 // SetDomainFilter is a no-op in the stub build.
 func SetDomainFilter(_ string) {}
+
+// SetLoginsOnly is a no-op in the stub build.
+func SetLoginsOnly(_ bool) {}
