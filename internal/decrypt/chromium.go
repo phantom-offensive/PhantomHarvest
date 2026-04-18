@@ -131,9 +131,14 @@ func DecryptChromiumProfile(profileDir, browserName string) (result []DecryptedF
 
 	// Note which keys we ended up with so the user can tell from the
 	// output whether the app-bound bypass succeeded.
-	keyMsg := "v10 only"
-	if keys.V20 != nil {
-		keyMsg = "v10 + v20 (app-bound)"
+	var keyMsg string
+	switch {
+	case keys.V10 != nil && keys.V20 != nil:
+		keyMsg = "v10 + v20 (app-bound) — Chrome 127+ passwords decryptable"
+	case keys.V20 != nil:
+		keyMsg = "v20 only (app-bound)"
+	case keys.V10 != nil:
+		keyMsg = "v10 only — Chrome 127+ v20 passwords NOT decryptable"
 	}
 	out = append(out, DecryptedFinding{
 		Category:   "Browser",

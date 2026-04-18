@@ -24,13 +24,14 @@ func enableAppBoundV20() { TryAppBoundV20 = true }
 // that want to try it can set this to true. Wired up to a CLI flag.
 var TryAppBoundV20 = false
 
-// getChromiumMasterKey reads Local State and attempts to unwrap the
-// legacy v10 key (DPAPI-protected AES key in `os_crypt.encrypted_key`).
-// If TryAppBoundV20 is set, it *also* tries to unwrap the v20 app-bound
-// key (`os_crypt.app_bound_encrypted_key`, introduced in Chrome v127) by
-// calling the browser's IElevator COM service. Either lookup may fail
-// independently — we return whatever we managed to obtain. Failing
-// *both* (or only attempting v10 and failing) is an error.
+// getChromiumMasterKey reads Local State and attempts to unwrap both keys:
+//
+//   - v10: legacy DPAPI-wrapped AES key (all Chrome versions)
+//   - v20: app-bound encrypted key (Chrome v127+, introduced mid-2024)
+//
+// v20 is attempted by default now — the crash-prone IElevator COM path is
+// already protected by runtime.LockOSThread + recover(). TryAppBoundV20
+// is kept for backwards compatibility but no longer gates the attempt.
 func getChromiumMasterKey(profileDir, browserName string) (*chromiumKeys, error) {
 	out := &chromiumKeys{}
 	var v10Err, v20Err error
@@ -47,12 +48,12 @@ func getChromiumMasterKey(profileDir, browserName string) (*chromiumKeys, error)
 		v10Err = err
 	}
 
-	if TryAppBoundV20 {
-		if key, err := getChromiumAppBoundKey(profileDir, browserName); err != nil {
-			v20Err = err
-		} else {
-			out.V20 = key
-		}
+	// Always attempt v20 — fall through gracefully if the browser doesn't
+	// support app-bound encryption or the service call fails.
+	if key, err := getChromiumAppBoundKey(profileDir, browserName); err != nil {
+		v20Err = err
+	} else {
+		out.V20 = key
 	}
 
 	if out.V10 == nil && out.V20 == nil {
