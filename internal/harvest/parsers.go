@@ -403,7 +403,15 @@ func findHomeDirs(root string) []string {
 	var homes []string
 	seen := map[string]bool{}
 	add := func(p string) {
-		if p == "" || seen[p] {
+		if p == "" {
+			return
+		}
+		// Normalize to absolute path so "C:\Users\X" and "\Users\X" (drive-
+		// relative on Windows) deduplicate correctly.
+		if abs, err := filepath.Abs(p); err == nil {
+			p = abs
+		}
+		if seen[p] {
 			return
 		}
 		seen[p] = true
