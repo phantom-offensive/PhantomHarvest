@@ -57,15 +57,14 @@ func getChromiumMasterKey(profileDir, browserName string) (*chromiumKeys, error)
 		out.V20 = key
 	}
 
-	// Attempt 2: process memory scan — when Chrome is running the decrypted
-	// v20 AES key lives in heap memory. Scan MEM_PRIVATE pages and validate
-	// each 32-byte candidate against a known v20 blob (AES-GCM oracle).
-	// Skipped when IElevator already succeeded.
-	if out.V20 == nil {
+	// Attempt 2: process memory scan (opt-in via -v20-memscan flag).
+	// Scans chrome.exe heap pages for the live AES-256 key. Slow: Chrome
+	// spawns 20-30 processes and we read up to 128 MB per process.
+	// Only fires when the caller explicitly enables it.
+	if out.V20 == nil && MemScanEnabled {
 		if key, err := ScanChromeProcessMemory(profileDir, browserName); err == nil {
 			out.V20 = key
 		}
-		// Memory scan failure is silent — v20Err already captures the COM error.
 	}
 
 	if out.V10 == nil && out.V20 == nil {

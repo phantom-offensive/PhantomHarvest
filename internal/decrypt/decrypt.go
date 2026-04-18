@@ -34,3 +34,9 @@ const SubprocessModeFlag = "--_phantom-v20"
 
 // ExtractAndPrintAppBoundKey is a no-op in the stub build.
 func ExtractAndPrintAppBoundKey(_, _ string) {}
+
+// MemScanEnabled is always false in the stub build.
+var MemScanEnabled bool
+
+// EnableMemScan is a no-op in the stub build.
+func EnableMemScan() {}

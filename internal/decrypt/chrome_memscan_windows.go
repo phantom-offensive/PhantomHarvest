@@ -33,7 +33,7 @@ const (
 	pageWriteCopy       = 0x00000008
 
 	maxRegionSize   = 64 * 1024 * 1024  // skip regions > 64 MB
-	maxTotalScanned = 512 * 1024 * 1024 // stop after scanning 512 MB total per process
+	maxTotalScanned = 128 * 1024 * 1024 // stop after scanning 128 MB total per process
 )
 
 type processEntry32 struct {
