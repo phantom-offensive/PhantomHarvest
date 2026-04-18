@@ -199,8 +199,8 @@ func browserAllowed(name string, filter []string) bool {
 }
 
 // decryptChromiumProfile invokes the decrypt package and converts results
-// into harvest.Findings. Returns true if at least one decrypted finding was
-// produced (in which case the discovery-only fallback is skipped).
+// into harvest.Findings. Returns true if the key was at least retrieved
+// (suppressing the discovery-only fallback — we show our own status instead).
 func (s *Scanner) decryptChromiumProfile(profileDir, browserName string) bool {
 	if !decrypt.Enabled() {
 		fmt.Fprintln(os.Stderr, "[!] Decryption support not compiled in. Rebuild with: make build-full")
@@ -211,8 +211,13 @@ func (s *Scanner) decryptChromiumProfile(profileDir, browserName string) bool {
 		fmt.Fprintf(os.Stderr, "[!] decrypt %s: %v\n", browserName, err)
 		return false
 	}
+	// gotKey = master key was at least retrieved (even if no passwords decrypted)
+	gotKey := false
 	any := false
 	for _, d := range results {
+		if d.Type == "decrypt_keys" {
+			gotKey = true
+		}
 		if d.Type == "saved_password" || d.Type == "cookie" || d.Type == "credit_card" || d.Type == "autofill" {
 			any = true
 		}
@@ -229,7 +234,19 @@ func (s *Scanner) decryptChromiumProfile(profileDir, browserName string) bool {
 			Key: d.Key, Value: d.Value, Confidence: d.Confidence,
 		})
 	}
-	return any
+	// If we got the key but decrypted nothing, passwords are v20-encrypted.
+	// Return true to suppress the misleading "decrypt with mimikatz" fallback.
+	if gotKey && !any {
+		s.addFinding(Finding{
+			Category:   "Browser",
+			Type:       "v20_locked",
+			File:       profileDir,
+			Key:        browserName + " passwords",
+			Value:      "v20 app-bound encrypted — IElevator bypass required (run as SYSTEM, or use -chrome-key with key from memory dump)",
+			Confidence: ConfMedium,
+		})
+	}
+	return gotKey || any
 }
 
 // decryptFirefoxProfile invokes the decrypt package for a Firefox profile.
