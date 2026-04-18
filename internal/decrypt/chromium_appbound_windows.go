@@ -31,6 +31,7 @@ const SubprocessModeFlag = "--_phantom-v20"
 func ExtractAndPrintAppBoundKey(profileDir, browserName string) {
 	key, err := getChromiumAppBoundKey(profileDir, browserName)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "v20-err: %v\n", err)
 		os.Exit(1)
 	}
 	fmt.Printf("%x", key)
@@ -54,9 +55,15 @@ func getChromiumAppBoundKeySubprocess(profileDir, browserName string) ([]byte, e
 	// Hide the console window so the subprocess is invisible.
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
 	out, err := cmd.Output()
 	if err != nil {
-		return nil, fmt.Errorf("v20 subprocess: %w", err)
+		reason := strings.TrimSpace(stderr.String())
+		if reason == "" {
+			reason = err.Error()
+		}
+		return nil, fmt.Errorf("v20 subprocess: %s", reason)
 	}
 	key, err := hex.DecodeString(strings.TrimSpace(string(out)))
 	if err != nil {

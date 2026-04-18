@@ -51,11 +51,16 @@ func getChromiumMasterKey(profileDir, browserName string) (*chromiumKeys, error)
 	// Always attempt v20 via a crash-isolated subprocess. If the IElevator
 	// COM call raises an SEH exception (0xc0000005), the subprocess crashes
 	// and we see a non-zero exit code — fall through gracefully to v10 only.
+	// Errors are surfaced in the master-key finding so the operator can tell
+	// what specifically failed.
+	var v20ErrStr string
 	if key, err := getChromiumAppBoundKeySubprocess(profileDir, browserName); err != nil {
 		v20Err = err
+		v20ErrStr = err.Error()
 	} else {
 		out.V20 = key
 	}
+	_ = v20ErrStr
 
 	if out.V10 == nil && out.V20 == nil {
 		return nil, fmt.Errorf("both key unwrap attempts failed: v10=%v; v20=%v", v10Err, v20Err)
