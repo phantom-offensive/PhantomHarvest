@@ -211,7 +211,13 @@ func (s *Scanner) decryptChromiumProfile(profileDir, browserName string) bool {
 		fmt.Fprintf(os.Stderr, "[!] decrypt %s: %v\n", browserName, err)
 		return false
 	}
-	// gotKey = master key was at least retrieved (even if no passwords decrypted)
+	// If the decrypt package returned anything at all — even decrypt_failed —
+	// we suppress the discovery-only fallback. It would just add noise on top
+	// of the more specific status findings we already emitted.
+	if len(results) == 0 {
+		return false
+	}
+
 	gotKey := false
 	any := false
 	for _, d := range results {
@@ -221,10 +227,6 @@ func (s *Scanner) decryptChromiumProfile(profileDir, browserName string) bool {
 		if d.Type == "saved_password" || d.Type == "cookie" || d.Type == "credit_card" || d.Type == "autofill" {
 			any = true
 		}
-		// Route decrypted autofill (plaintext PII from Web Data.sqlite:
-		// addresses, phones, form history, etc.) into its own category
-		// so the Browser block stays focused on passwords/cookies/card
-		// findings while autofill gets its own bordered table.
 		category := d.Category
 		if d.Type == "autofill" {
 			category = "Browser Autofill"
@@ -234,19 +236,18 @@ func (s *Scanner) decryptChromiumProfile(profileDir, browserName string) bool {
 			Key: d.Key, Value: d.Value, Confidence: d.Confidence,
 		})
 	}
-	// If we got the key but decrypted nothing, passwords are v20-encrypted.
-	// Return true to suppress the misleading "decrypt with mimikatz" fallback.
+	// v10 key obtained but all entries are v20-encrypted → tell operator.
 	if gotKey && !any {
 		s.addFinding(Finding{
 			Category:   "Browser",
 			Type:       "v20_locked",
 			File:       profileDir,
 			Key:        browserName + " passwords",
-			Value:      "v20 app-bound encrypted — memory scan failed (Chrome must be running); try: keep browser open and re-run, run as SYSTEM, or use -chrome-key",
+			Value:      "v20 app-bound encrypted — use -v20-memscan with browser open, run as SYSTEM, or -chrome-key",
 			Confidence: ConfMedium,
 		})
 	}
-	return gotKey || any
+	return true // always suppress discovery fallback when decrypt was attempted
 }
 
 // decryptFirefoxProfile invokes the decrypt package for a Firefox profile.
