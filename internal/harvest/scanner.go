@@ -27,6 +27,9 @@ type Scanner struct {
 	mu              sync.Mutex
 	Meta            ScanMeta
 	DecryptBrowsers bool
+	BrowserFilter   []string // if set, only scan these browser names (case-insensitive)
+	DomainFilter    string   // if set, only extract cookies matching this domain substring
+	LoginsOnly      bool     // if true, only run browser saved-password extraction
 }
 
 // Confidence levels for findings
@@ -90,77 +93,87 @@ func (s *Scanner) Run() []Finding {
 
 	var wg sync.WaitGroup
 
-	// Phase 1: Find known credential files
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.scanKnownFiles()
-	}()
+	if s.LoginsOnly {
+		// Only extract browser saved passwords — skip all other phases.
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.scanBrowsers()
+		}()
+		wg.Wait()
+	} else {
+		// Phase 1: Find known credential files
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.scanKnownFiles()
+		}()
 
-	// Phase 2: Walk filesystem for pattern matches in file contents
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.scanFileContents()
-	}()
+		// Phase 2: Walk filesystem for pattern matches in file contents
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.scanFileContents()
+		}()
 
-	// Phase 3: Check history files
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.scanHistoryFiles()
-	}()
+		// Phase 3: Check history files
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.scanHistoryFiles()
+		}()
 
-	// Phase 4: Check SSH keys
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.scanSSHKeys()
-	}()
+		// Phase 4: Check SSH keys
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.scanSSHKeys()
+		}()
 
-	// Phase 5: Browser passwords and history
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.scanBrowsers()
-	}()
+		// Phase 5: Browser passwords and history
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.scanBrowsers()
+		}()
 
-	// Phase 6: Password manager vaults
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.scanPasswordManagers()
-	}()
+		// Phase 6: Password manager vaults
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.scanPasswordManagers()
+		}()
 
-	// Phase 7: Windows-specific (Credential Manager, Wi-Fi, RDP, DPAPI)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.scanWindows()
-	}()
+		// Phase 7: Windows-specific (Credential Manager, Wi-Fi, RDP, DPAPI)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.scanWindows()
+		}()
 
-	// Phase 8: Environment variables
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.scanEnvironment()
-	}()
+		// Phase 8: Environment variables
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.scanEnvironment()
+		}()
 
-	// Phase 9: App tokens (Slack, Discord, Teams, Telegram)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.scanAppTokens()
-	}()
+		// Phase 9: App tokens (Slack, Discord, Teams, Telegram)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.scanAppTokens()
+		}()
 
-	// Phase 10: App configs (FileZilla, DBeaver, pgAdmin, HeidiSQL, VPN, Certs)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		s.scanAppConfigs()
-	}()
+		// Phase 10: App configs (FileZilla, DBeaver, pgAdmin, HeidiSQL, VPN, Certs)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.scanAppConfigs()
+		}()
 
-	wg.Wait()
+		wg.Wait()
+	}
 
 	// Deduplicate (hold lock since goroutines may have just finished writing)
 	s.mu.Lock()

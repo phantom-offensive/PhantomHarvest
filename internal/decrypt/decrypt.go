@@ -16,3 +16,12 @@ func DecryptFirefoxProfile(profileDir, browserName string) ([]DecryptedFinding, 
 
 // EnableAppBoundV20 is a no-op in the stub build.
 func EnableAppBoundV20() {}
+
+// SetExternalChromiumKey is a no-op in the stub build.
+func SetExternalChromiumKey(_ string) error { return ErrNotCompiledIn }
+
+// SetDPAPIMasterKey is a no-op in the stub build.
+func SetDPAPIMasterKey(_ string) error { return ErrNotCompiledIn }
+
+// SetDomainFilter is a no-op in the stub build.
+func SetDomainFilter(_ string) {}

