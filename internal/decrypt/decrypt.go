@@ -28,3 +28,9 @@ func SetDomainFilter(_ string) {}
 
 // SetLoginsOnly is a no-op in the stub build.
 func SetLoginsOnly(_ bool) {}
+
+// SubprocessModeFlag for non-decrypt builds.
+const SubprocessModeFlag = "--_phantom-v20"
+
+// ExtractAndPrintAppBoundKey is a no-op in the stub build.
+func ExtractAndPrintAppBoundKey(_, _ string) {}

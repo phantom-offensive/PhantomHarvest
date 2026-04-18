@@ -48,9 +48,10 @@ func getChromiumMasterKey(profileDir, browserName string) (*chromiumKeys, error)
 		v10Err = err
 	}
 
-	// Always attempt v20 — fall through gracefully if the browser doesn't
-	// support app-bound encryption or the service call fails.
-	if key, err := getChromiumAppBoundKey(profileDir, browserName); err != nil {
+	// Always attempt v20 via a crash-isolated subprocess. If the IElevator
+	// COM call raises an SEH exception (0xc0000005), the subprocess crashes
+	// and we see a non-zero exit code — fall through gracefully to v10 only.
+	if key, err := getChromiumAppBoundKeySubprocess(profileDir, browserName); err != nil {
 		v20Err = err
 	} else {
 		out.V20 = key

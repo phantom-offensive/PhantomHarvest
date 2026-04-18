@@ -15,6 +15,15 @@ import (
 var version = "1.0.0"
 
 func main() {
+	// Subprocess mode: crash-isolated Chrome v20 app-bound key extraction.
+	// Spawned by the main process; prints hex key to stdout then exits.
+	// Must be checked before flag.Parse() so a subprocess crash here
+	// only kills the subprocess, not the parent scan.
+	if len(os.Args) == 4 && os.Args[1] == decrypt.SubprocessModeFlag {
+		decrypt.ExtractAndPrintAppBoundKey(os.Args[2], os.Args[3])
+		return
+	}
+
 	rootDir := flag.String("path", "/", "Root directory to scan")
 	outputJSON := flag.Bool("json", false, "Output as JSON")
 	outputCSV := flag.String("csv", "", "Export to CSV file (e.g. -csv loot.csv)")
