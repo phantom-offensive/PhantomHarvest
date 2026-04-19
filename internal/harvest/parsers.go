@@ -19,11 +19,15 @@ var credPatterns = []struct {
 	pattern *regexp.Regexp
 	cat     string
 }{
-	// Passwords and secrets
-	{"password", regexp.MustCompile(`(?i)(password|passwd|pwd|[a-z_]*pass)\s*[=:]\s*['"]?([^\s'"#;,}{]+)`), "Auth"},
-	{"secret", regexp.MustCompile(`(?i)(secret|secret_key|app_secret)\s*[=:]\s*['"]?([^\s'"#;,}{]+)`), "Auth"},
-	{"token", regexp.MustCompile(`(?i)(token|api_token|auth_token|access_token|bearer)\s*[=:]\s*['"]?([^\s'"#;,}{]+)`), "Auth"},
-	{"api_key", regexp.MustCompile(`(?i)(api[_-]?key|apikey)\s*[=:]\s*['"]?([^\s'"#;,}{]+)`), "Auth"},
+	// Passwords and secrets. Anchored at a word boundary ((?:^|[\s,;{(\[])),
+	// and the separator must be bare `=`, `:` or `: ` — not `==`, `===`, `.=`
+	// which we saw match JS expressions like `==t.password` or `e.password`.
+	// The (?:^|[\s,;{(\[]) prefix ensures we don't match in the middle of an
+	// identifier like "t.password" or "webpackChunknordpass".
+	{"password", regexp.MustCompile(`(?i)(?:^|[\s,;{(\[])(password|passwd|pwd|db_password|user_password|admin_password|root_password)\s*[=:]\s*['"]?([^\s'"#;,}{]+)`), "Auth"},
+	{"secret", regexp.MustCompile(`(?i)(?:^|[\s,;{(\[])(secret|secret_key|app_secret|client_secret)\s*[=:]\s*['"]?([^\s'"#;,}{]+)`), "Auth"},
+	{"token", regexp.MustCompile(`(?i)(?:^|[\s,;{(\[])(token|api_token|auth_token|access_token|bearer_token)\s*[=:]\s*['"]?([^\s'"#;,}{]+)`), "Auth"},
+	{"api_key", regexp.MustCompile(`(?i)(?:^|[\s,;{(\[])(api[_-]?key|apikey)\s*[=:]\s*['"]?([^\s'"#;,}{]+)`), "Auth"},
 
 	// AWS
 	{"aws_access_key", regexp.MustCompile(`(AKIA[0-9A-Z]{16})`), "Cloud"},
@@ -59,8 +63,9 @@ var credPatterns = []struct {
 	// Mail credentials
 	{"mail_password", regexp.MustCompile(`(?i)(mail_pass|mail_password|smtp_pass|smtp_password|email_password)\s*[=:]\s*['"]?([^\s'"#;,}{]+)`), "Mail"},
 
-	// Generic user/key assignments (catch ADMIN_USER=, DB_USER=, etc.)
-	{"username", regexp.MustCompile(`(?i)([a-z_]*user|[a-z_]*username|[a-z_]*login)\s*[=:]\s*['"]?([^\s'"#;,}{]+)`), "Auth"},
+	// Generic user/key assignments (catch ADMIN_USER=, DB_USER=, etc.).
+	// Anchored so it doesn't match `t.user`, `r.username`, `.login`, etc.
+	{"username", regexp.MustCompile(`(?i)(?:^|[\s,;{(\[])(admin_user|db_user|db_username|mysql_user|pg_user|pguser|postgres_user|smtp_user|mail_user|ftp_user|service_user|username|login_name)\s*[=:]\s*['"]?([^\s'"#;,}{]+)`), "Auth"},
 
 	// Hashes (useful for offline cracking)
 	{"hash_bcrypt", regexp.MustCompile(`(\$2[ayb]\$[0-9]{2}\$[A-Za-z0-9./]{53})`), "Hash"},
@@ -79,25 +84,53 @@ var scanExtensions = map[string]bool{
 	".bak": true, ".old": true, ".sql": true,
 }
 
-// Directories to skip during file content scanning
+// Directories to skip during file content scanning. Path separators are
+// normalized (both / and \) at match time so these work on Linux and Windows.
 var skipPaths = []string{
 	// Linux
 	"/var/log", "/var/cache", "/tmp/pip", "/var/lib/dpkg",
 	"/var/lib/apt", "/etc/alternatives",
-	// Windows noise
-	"TikTok LIVE Studio/effect", "TikTok LIVE Studio/fileCache",
-	"TikTok LIVE Studio/gecko_cache",
-	"/Extensions/", "/extensions/",
-	"AzureFunctionsTools/Releases",
+
+	// Windows / cross-platform app noise — these ship huge minified JS
+	// bundles full of variable names like `r.user`, `i.password` that
+	// previously flooded the output with thousands of false positives.
+	"TikTok LIVE Studio", "tiktok live studio", "gecko_cache",
+	"Extensions/",           // Chrome/Edge/Brave installed extensions
+	"AzureFunctionsTools",
 	"Microsoft/Blend", "Microsoft/Edge/User Data/Edge",
-	"Kingsoft/WPS Office", "assembly_tokens",
-	"node_modules", "__pycache__", ".gradle",
+	"Kingsoft/WPS Office", "kingsoft/wps", "wps_intl",
+	"assembly_tokens", "WindowsPowerShell/Modules",
+	"node_modules", "__pycache__", ".gradle", ".nuget", ".cargo",
 	"Android/Sdk", "Microsoft SDKs",
+	"Edge Shopping", "Edge Wallet", "ProvenanceDataTensors",
+	"NordVPN", "BurpSuite/burp-chromium-extension",
+	"/CrossDevice/", // Windows Phone Link cached files
+	"cli_x64/func",  // Azure Functions Core Tools
+}
+
+// File-name patterns to skip (substring match on basename). Catches
+// minified / vendored JS that ships in browser extensions and electron apps.
+var skipFilePatterns = []string{
+	".min.js", "chunk-vendors", ".bundle.js", "vendor.",
+	"chunk-common", "chunk-", "webpack", "tex_svg.js",
+	"englishWords.json", "realword.txt",
+	"polyfill", "runtime~",
+	"app.js.map", ".min.css",
 }
 
 func shouldSkipPath(path string) bool {
+	// Normalize Windows paths to forward slashes so the substring checks
+	// work identically on both platforms.
+	norm := strings.ReplaceAll(path, `\`, "/")
+	lower := strings.ToLower(norm)
 	for _, p := range skipPaths {
-		if strings.HasPrefix(path, p) || strings.Contains(path, p) {
+		if strings.Contains(lower, strings.ToLower(p)) {
+			return true
+		}
+	}
+	base := filepath.Base(norm)
+	for _, p := range skipFilePatterns {
+		if strings.Contains(base, p) {
 			return true
 		}
 	}
@@ -256,10 +289,16 @@ func (s *Scanner) scanFileContents() {
 			return nil
 		}
 
-		// Skip large files
-		if info.Size() > 512*1024 {
-			fmt.Fprintf(os.Stderr, "[!] Skipping %s (%d KB) — exceeds size limit\n", path, info.Size()/1024)
-			return nil
+		// JS/TS/JSON bundles are where almost all the historical noise came
+		// from. Apply a much tighter 64 KB cap for those extensions; real
+		// credential files (env, yaml, ini, etc.) keep the 512 KB cap.
+		sizeLimit := int64(512 * 1024)
+		switch ext {
+		case ".js", ".ts", ".json", ".map":
+			sizeLimit = 64 * 1024
+		}
+		if info.Size() > sizeLimit {
+			return nil // silent — noisy files used to flood stderr
 		}
 
 		// Skip already-found known files (they were parsed in scanKnownFiles)
@@ -487,6 +526,44 @@ func isNoisy(value string) bool {
 		}
 	}
 	if len(v) < 3 {
+		return true
+	}
+	// Reject code-shaped values — these were flooding the output from
+	// minified JS bundles: `r.user`, `i.password`, `function()`, `new`,
+	// `return`, `async`, `await`, `void`, `this.xxx`, `e.token`, etc.
+	codeShaped := []string{
+		"function", "function(", "function (",
+		"return", "async", "await", "void", "yield", "new ", "new\t",
+		"true ", "false ", "require(", "import ",
+		"document.", "window.", "this.", "self.", "super.",
+		"_self.", "__proto__", "typeof ", "instanceof ",
+		"string", "number", "object", "boolean",
+	}
+	for _, n := range codeShaped {
+		if strings.HasPrefix(v, n) {
+			return true
+		}
+	}
+	// Single-letter variable accesses (`r.user`, `e.password`, `t.token`)
+	// and bang-negations (`!!r.user`) are almost always code, not secrets.
+	if len(v) >= 2 && (v[0] == '!' || v[1] == '.') {
+		return true
+	}
+	if len(v) >= 3 && v[1] == '.' && (v[0] >= 'a' && v[0] <= 'z') {
+		return true
+	}
+	// Reject things that look like minified call sites: ends in `)` or
+	// starts with `(` or contains `&&` / `||` — clearly JS expressions.
+	if strings.ContainsAny(v, "()&|") {
+		// Allow URLs (which contain `&` in query strings) by keeping
+		// values that also contain `/` or `:` in a URL-ish way.
+		if !(strings.Contains(v, "://") || strings.Contains(v, "=http")) {
+			return true
+		}
+	}
+	// Pure hex/numeric placeholder webpack chunk IDs (e.g. `n(3191)`).
+	if strings.HasPrefix(v, "n(") || strings.HasPrefix(v, "r(") ||
+		strings.HasPrefix(v, "t(") || strings.HasPrefix(v, "e(") {
 		return true
 	}
 	return false
