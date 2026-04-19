@@ -40,3 +40,6 @@ var MemScanEnabled bool
 
 // EnableMemScan is a no-op in the stub build.
 func EnableMemScan() {}
+
+// ExtractBrowserTokens is a no-op in the stub build.
+func ExtractBrowserTokens() ([]DecryptedFinding, error) { return nil, ErrNotCompiledIn }

@@ -14,3 +14,10 @@ func ExtractAndPrintAppBoundKey(_, _ string) {}
 func ScanChromeProcessMemory(_, _ string) ([]byte, error) {
 	return nil, nil
 }
+
+// ExtractBrowserTokens is a no-op on non-Windows platforms for now — the
+// ReadProcessMemory path is Windows-specific. Linux/macOS equivalents
+// would go through /proc/<pid>/mem or task_for_pid() respectively.
+func ExtractBrowserTokens() ([]DecryptedFinding, error) {
+	return nil, nil
+}

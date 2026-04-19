@@ -187,6 +187,28 @@ func (s *Scanner) scanBrowsers() {
 	}
 }
 
+// scanBrowserTokens scans live browser process memory for plaintext auth
+// tokens (JWTs, Authorization: Bearer, service API keys). Unlike the disk
+// database scan, this works even when Chrome v20 app-bound encryption
+// blocks offline cookie decryption — the tokens are already in memory.
+func (s *Scanner) scanBrowserTokens() {
+	if !decrypt.Enabled() {
+		fmt.Fprintln(os.Stderr, "[!] Token extraction requires a binary built with: make build-full")
+		return
+	}
+	findings, err := decrypt.ExtractBrowserTokens()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "[!] token scan: %v\n", err)
+		return
+	}
+	for _, d := range findings {
+		s.addFinding(Finding{
+			Category: d.Category, Type: d.Type, File: d.File,
+			Key: d.Key, Value: d.Value, Confidence: d.Confidence,
+		})
+	}
+}
+
 // browserAllowed returns true if name (case-insensitive) is in the filter list.
 func browserAllowed(name string, filter []string) bool {
 	nameLower := strings.ToLower(name)

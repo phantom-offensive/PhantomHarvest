@@ -31,6 +31,7 @@ type Scanner struct {
 	BrowserFilter   []string // if set, only scan these browser names (case-insensitive)
 	DomainFilter    string   // if set, only extract cookies matching this domain substring
 	LoginsOnly      bool     // if true, only run browser saved-password extraction
+	ExtractTokens   bool     // if true, scan browser process memory for JWTs / bearer tokens / API keys
 }
 
 // Confidence levels for findings
@@ -107,6 +108,13 @@ func (s *Scanner) Run() []Finding {
 			defer wg.Done()
 			s.scanBrowsers()
 		}()
+		if s.ExtractTokens {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				s.scanBrowserTokens()
+			}()
+		}
 		wg.Wait()
 	} else {
 		// Phase 1: Find known credential files
@@ -178,6 +186,15 @@ func (s *Scanner) Run() []Finding {
 			defer wg.Done()
 			s.scanAppConfigs()
 		}()
+
+		// Phase 11: Live browser memory token extraction (opt-in).
+		if s.ExtractTokens {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				s.scanBrowserTokens()
+			}()
+		}
 
 		wg.Wait()
 	}

