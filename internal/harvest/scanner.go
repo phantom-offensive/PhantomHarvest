@@ -32,6 +32,7 @@ type Scanner struct {
 	DomainFilter    string   // if set, only extract cookies matching this domain substring
 	LoginsOnly      bool     // if true, only run browser saved-password extraction
 	ExtractTokens   bool     // if true, scan browser process memory for JWTs / bearer tokens / API keys
+	AllAutofill     bool     // if true, emit every autofill row; default filters to secret-looking entries only
 }
 
 // Confidence levels for findings

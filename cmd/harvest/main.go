@@ -47,6 +47,7 @@ func main() {
 	dpapiMK := flag.String("dpapi-masterkey", "", "DPAPI masterkey as hex (from secretsdump/pypykatz) — auto-decrypts Chrome Local State blob")
 	v20MemScan := flag.Bool("v20-memscan", false, "Scan chrome.exe process memory for v20 app-bound key (slow — browser must be running)")
 	extractTokens := flag.Bool("extract-tokens", false, "Scan browser process memory for plaintext JWTs, bearer tokens, and API keys (browser must be running)")
+	allAutofill := flag.Bool("all-autofill", false, "Show every browser autofill row (default filters to secret-looking entries only; PII form fields are hidden)")
 
 	flag.Parse()
 
@@ -75,6 +76,9 @@ func main() {
 	if *extractTokens {
 		scanner.ExtractTokens = true
 		fmt.Fprintln(os.Stderr, "[*] Browser token extraction ENABLED (browser must be running)")
+	}
+	if *allAutofill {
+		scanner.AllAutofill = true
 	}
 
 	// SharpChrome-equivalent features

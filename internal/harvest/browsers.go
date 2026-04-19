@@ -209,6 +209,70 @@ func (s *Scanner) scanBrowserTokens() {
 	}
 }
 
+// isInterestingAutofill returns true for autofill entries that look like
+// secrets rather than PII. Keeps: CTF flags, password/secret/token/cred/
+// api_key fields, and high-entropy long values. Drops: names, emails,
+// phones, addresses, dropdown placeholders like "Decimal Odds".
+func isInterestingAutofill(key, value string) bool {
+	kl := strings.ToLower(key)
+	vl := strings.ToLower(value)
+
+	// CTF flag formats.
+	for _, flag := range []string{"htb{", "puppet{", "flag{", "ctf{", "thm{", "picoctf{"} {
+		if strings.Contains(vl, flag) {
+			return true
+		}
+	}
+
+	// Field-name hints that scream "secret".
+	for _, hint := range []string{
+		"password", "passwd", "pwd",
+		"secret", "apikey", "api_key", "api-key",
+		"token", "access_token", "auth_token", "bearer",
+		"cred", "credential",
+		"client_secret", "clientsecret",
+		"pin", "cvv", "cvc", "otp", "2fa", "mfa", "totp",
+		"ssn", "routing", "account_number",
+		"private_key", "ssh_key",
+	} {
+		if strings.Contains(kl, hint) {
+			return true
+		}
+	}
+
+	// Value-shape heuristic: long high-entropy strings that look like
+	// API keys, hashes, or random tokens. Drops short names, phone
+	// numbers, addresses, and "Decimal Odds"-style dropdown text.
+	if len(value) >= 20 && looksLikeSecret(value) {
+		return true
+	}
+	return false
+}
+
+// looksLikeSecret returns true if the string has the mixed-case + digit +
+// optional-symbol shape of a credential/token, and is not just a URL or
+// sentence.
+func looksLikeSecret(s string) bool {
+	if strings.Contains(s, " ") || strings.Contains(s, "\t") {
+		return false
+	}
+	if strings.HasPrefix(strings.ToLower(s), "http://") || strings.HasPrefix(strings.ToLower(s), "https://") {
+		return false
+	}
+	var hasUpper, hasLower, hasDigit bool
+	for _, r := range s {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			hasUpper = true
+		case r >= 'a' && r <= 'z':
+			hasLower = true
+		case r >= '0' && r <= '9':
+			hasDigit = true
+		}
+	}
+	return hasUpper && hasLower && hasDigit
+}
+
 // browserAllowed returns true if name (case-insensitive) is in the filter list.
 func browserAllowed(name string, filter []string) bool {
 	nameLower := strings.ToLower(name)
@@ -248,6 +312,12 @@ func (s *Scanner) decryptChromiumProfile(profileDir, browserName string) bool {
 		}
 		if d.Type == "saved_password" || d.Type == "cookie" || d.Type == "credit_card" || d.Type == "autofill" {
 			any = true
+		}
+		// Autofill is dominated by PII form fields (names, addresses,
+		// phones, emails, dropdown placeholders). Default-filter to only
+		// secret-looking entries; -all-autofill disables this filter.
+		if d.Type == "autofill" && !s.AllAutofill && !isInterestingAutofill(d.Key, d.Value) {
+			continue
 		}
 		category := d.Category
 		if d.Type == "autofill" {
