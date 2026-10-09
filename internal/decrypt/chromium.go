@@ -152,11 +152,13 @@ func DecryptChromiumProfile(profileDir, browserName string) (result []DecryptedF
 	if logins, err := decryptChromiumLogins(filepath.Join(profileDir, "Login Data"), keys, browserName); err == nil {
 		out = append(out, logins...)
 	}
-	// Cookies
-	if cookies, err := decryptChromiumCookies(filepath.Join(profileDir, "Network", "Cookies"), keys, browserName); err == nil {
-		out = append(out, cookies...)
-	} else if cookies, err := decryptChromiumCookies(filepath.Join(profileDir, "Cookies"), keys, browserName); err == nil {
-		out = append(out, cookies...)
+	// Cookies (skipped in logins-only mode)
+	if !loginsOnly {
+		if cookies, err := decryptChromiumCookies(filepath.Join(profileDir, "Network", "Cookies"), keys, browserName); err == nil {
+			out = append(out, cookies...)
+		} else if cookies, err := decryptChromiumCookies(filepath.Join(profileDir, "Cookies"), keys, browserName); err == nil {
+			out = append(out, cookies...)
+		}
 	}
 	// Credit cards & autofill (skipped in logins-only mode)
 	if !loginsOnly {
