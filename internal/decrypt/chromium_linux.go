@@ -93,15 +93,15 @@ func chromiumDecryptValue(blob []byte, keys *chromiumKeys) ([]byte, error) {
 	mode := cipher.NewCBCDecrypter(block, iv)
 	out := make([]byte, len(blob))
 	mode.CryptBlocks(out, blob)
-	return pkcs7Unpad(out), nil
+	return pkcs7Unpad(out, aes.BlockSize), nil
 }
 
-func pkcs7Unpad(b []byte) []byte {
+func pkcs7Unpad(b []byte, blockSize int) []byte {
 	if len(b) == 0 {
 		return b
 	}
 	pad := int(b[len(b)-1])
-	if pad <= 0 || pad > len(b) {
+	if pad <= 0 || pad > blockSize || pad > len(b) {
 		return b
 	}
 	return b[:len(b)-pad]

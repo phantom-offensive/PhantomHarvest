@@ -83,7 +83,11 @@ func main() {
 
 	// SharpChrome-equivalent features
 	if *browserFlag != "" {
-		scanner.BrowserFilter = strings.Split(*browserFlag, ",")
+		for _, b := range strings.Split(*browserFlag, ",") {
+			if b = strings.TrimSpace(b); b != "" {
+				scanner.BrowserFilter = append(scanner.BrowserFilter, b)
+			}
+		}
 	}
 	if *domainFlag != "" {
 		scanner.DomainFilter = *domainFlag

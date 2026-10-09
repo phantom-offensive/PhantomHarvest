@@ -139,16 +139,21 @@ func shouldSkipPath(path string) bool {
 
 // parseCredentialFile reads a file and extracts credentials using regex patterns.
 func (s *Scanner) parseCredentialFile(path, category, fileType string) {
+	// Check size before reading so oversized files aren't pulled into memory.
+	st, err := os.Stat(path)
+	if err != nil {
+		return
+	}
+	if st.Size() > 512*1024 { // Skip files > 512KB
+		fmt.Fprintf(os.Stderr, "[!] Skipping %s (%d KB) — exceeds size limit\n", path, st.Size()/1024)
+		return
+	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return
 	}
-
 	content := string(data)
-	if len(content) > 512*1024 { // Skip files > 512KB
-		fmt.Fprintf(os.Stderr, "[!] Skipping %s (%d KB) — exceeds size limit\n", path, len(content)/1024)
-		return
-	}
 
 	lines := strings.Split(content, "\n")
 	found := false

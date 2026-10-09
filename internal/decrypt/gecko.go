@@ -183,7 +183,7 @@ func geckoPBEDecrypt(blob, globalSalt, masterPW []byte) ([]byte, error) {
 	out := make([]byte, len(p.Ciphertext))
 	mode := newCBCDec(block, iv)
 	mode.CryptBlocks(out, p.Ciphertext)
-	return pkcs7UnpadGeneric(out), nil
+	return pkcs7UnpadGeneric(out, des.BlockSize), nil
 }
 
 // geckoDecryptItem decodes a base64 logins.json field and 3DES-CBC decrypts
@@ -208,15 +208,15 @@ func geckoDecryptItem(b64 string, masterKey []byte) ([]byte, error) {
 	}
 	out := make([]byte, len(p.Ciphertext))
 	newCBCDec(block, iv).CryptBlocks(out, p.Ciphertext)
-	return pkcs7UnpadGeneric(out), nil
+	return pkcs7UnpadGeneric(out, des.BlockSize), nil
 }
 
-func pkcs7UnpadGeneric(b []byte) []byte {
+func pkcs7UnpadGeneric(b []byte, blockSize int) []byte {
 	if len(b) == 0 {
 		return b
 	}
 	pad := int(b[len(b)-1])
-	if pad <= 0 || pad > len(b) {
+	if pad <= 0 || pad > blockSize || pad > len(b) {
 		return b
 	}
 	return b[:len(b)-pad]
