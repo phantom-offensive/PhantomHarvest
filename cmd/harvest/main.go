@@ -148,7 +148,7 @@ func main() {
 			}
 			return
 		} else {
-			harvest.OutputJSONFile(results, *outputFile)
+			harvest.OutputJSONFile(results, scanner.Meta, *outputFile)
 			harvest.OutputTable(results)
 			if len(results) == 0 {
 				fmt.Fprintln(os.Stderr, "[*] Scan complete. 0 findings.")
@@ -174,7 +174,7 @@ func main() {
 
 	// Terminal output
 	if *outputJSON {
-		harvest.OutputJSON(results)
+		harvest.OutputJSON(results, scanner.Meta)
 	} else {
 		harvest.OutputTable(results)
 	}

@@ -342,8 +342,8 @@ func OutputTable(findings []Finding) {
 }
 
 // OutputJSON prints findings as JSON to stdout.
-func OutputJSON(findings []Finding) {
-	if err := OutputJSONWriter(findings, ScanMeta{}, os.Stdout); err != nil {
+func OutputJSON(findings []Finding, meta ScanMeta) {
+	if err := OutputJSONWriter(findings, meta, os.Stdout); err != nil {
 		fmt.Fprintf(os.Stderr, "  [-] Error encoding JSON: %v\n", err)
 	}
 }
@@ -361,14 +361,14 @@ func OutputJSONWriter(findings []Finding, meta ScanMeta, w *os.File) error {
 }
 
 // OutputJSONFile writes findings as JSON to a file.
-func OutputJSONFile(findings []Finding, path string) error {
+func OutputJSONFile(findings []Finding, meta ScanMeta, path string) error {
 	f, err := os.Create(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, err)
 		return err
 	}
 	defer f.Close()
-	if err := OutputJSONWriter(findings, ScanMeta{}, f); err != nil {
+	if err := OutputJSONWriter(findings, meta, f); err != nil {
 		fmt.Fprintf(os.Stderr, "  [-] Error encoding JSON to %s: %v\n", path, err)
 		return err
 	}
