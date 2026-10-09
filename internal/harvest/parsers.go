@@ -51,8 +51,9 @@ var credPatterns = []struct {
 	{"mongodb_conn", regexp.MustCompile(`mongodb(?:\+srv)?://([^@]+)@`), "Database"},
 	{"redis_conn", regexp.MustCompile(`redis://(:?[^@]+)@`), "Database"},
 
-	// Private keys
-	{"private_key", regexp.MustCompile(`-----BEGIN (RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----`), "SSH"},
+	// Private keys — capture the full header so the reported value is the
+	// key type, not just "RSA " (previous group-1-only capture).
+	{"private_key", regexp.MustCompile(`(-----BEGIN (?:RSA |EC |DSA |OPENSSH )?PRIVATE KEY-----)`), "SSH"},
 
 	// JWT
 	{"jwt", regexp.MustCompile(`(eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})`), "Auth"},
