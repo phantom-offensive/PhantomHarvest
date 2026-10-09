@@ -30,8 +30,11 @@ func (s *Scanner) scanEnvironment() {
 
 	// Skip env vars set by the tool's runner (CI/CD systems running phantom-harvest itself).
 	// These would create noisy false positives that aren't credentials from the target host.
+	// NOTE: "CI_" (not bare "CI") so real CI/CD secrets like CIRCLE_TOKEN
+	// are still reported; the exact "CI" env var is still covered by the
+	// TrimSuffix("_") comparison in the loop below.
 	skipEnvPrefixes := []string{
-		"GITHUB_", "GITLAB_", "CI", "CI_", "JENKINS_", "RUNNER_",
+		"GITHUB_", "GITLAB_", "CI_", "JENKINS_", "RUNNER_",
 		"BUILDKITE_", "BUILD_", "AGENT_", "TF_BUILD", "BITRISE_",
 	}
 
