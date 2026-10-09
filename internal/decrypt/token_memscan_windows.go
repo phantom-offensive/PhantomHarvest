@@ -139,25 +139,34 @@ func scanProcessForTokens(ctx context.Context, pid uint32, browser string, seen 
 			isReadable(mbi.Protect) &&
 			mbi.RegionSize <= maxRegionSize {
 
-			size := int(mbi.RegionSize)
-			if size > len(buf) {
-				size = len(buf)
-			}
-			chunk := buf[:size]
+			// Scan the region in <=4MB sub-chunks so regions between 4MB and
+			// maxRegionSize are fully covered (not just their first 4MB).
+			regionSize := int(mbi.RegionSize)
+			stop := false
+			for off := 0; off < regionSize && !stop; off += len(buf) {
+				size := regionSize - off
+				if size > len(buf) {
+					size = len(buf)
+				}
+				chunk := buf[:size]
 
-			var nRead uintptr
-			ret, _, _ := procReadProcessMemory.Call(
-				uintptr(handle),
-				mbi.BaseAddress,
-				uintptr(unsafe.Pointer(&chunk[0])),
-				uintptr(size),
-				uintptr(unsafe.Pointer(&nRead)),
-			)
-			if ret != 0 && nRead > 0 {
-				scanBytesForTokens(chunk[:nRead], browser, pid, seen, out)
+				var nRead uintptr
+				ret, _, _ := procReadProcessMemory.Call(
+					uintptr(handle),
+					mbi.BaseAddress+uintptr(off),
+					uintptr(unsafe.Pointer(&chunk[0])),
+					uintptr(size),
+					uintptr(unsafe.Pointer(&nRead)),
+				)
+				if ret != 0 && nRead > 0 {
+					scanBytesForTokens(chunk[:nRead], browser, pid, seen, out)
+				}
+				totalScanned += int64(nRead)
+				if totalScanned > tokenPerProcCap {
+					stop = true
+				}
 			}
-			totalScanned += int64(nRead)
-			if totalScanned > tokenPerProcCap {
+			if stop {
 				break
 			}
 		}
