@@ -169,20 +169,21 @@ the dropper small.
 
 Chrome 127+ protects saved passwords with a second AES-256 key whose wrapper
 can only be decrypted by the Chrome ElevationService (running as SYSTEM).
-PhantomHarvest defeats this without elevation using **two automatic fallbacks**:
+PhantomHarvest defeats this without elevation using **two opt-in fallbacks**:
 
-1. **IElevator COM** — calls `DecryptData` via Chrome's elevation service. Works
-   on Chrome < 130 or when running as SYSTEM. Chrome 130+ added binary signature
-   verification that blocks unsigned callers.
-2. **Process memory scan** — when Chrome is running, the decrypted AES-256 key
-   lives in heap memory. PhantomHarvest enumerates `chrome.exe` / `msedge.exe` /
-   `brave.exe` heap pages, extracts every 32-byte high-entropy candidate, and
-   validates each one against a known ciphertext from Login Data using AES-GCM
-   (false positive rate ≈ 2⁻¹²⁸). **Browser must be open** for this to work.
+1. **IElevator COM** (`-chrome-v20-experimental`) — calls `DecryptData` via
+   Chrome's elevation service. Works on Chrome < 130 or when running as SYSTEM.
+   Chrome 130+ added binary signature verification that blocks unsigned callers.
+2. **Process memory scan** (`-v20-memscan`) — when Chrome is running, the
+   decrypted AES-256 key lives in heap memory. PhantomHarvest enumerates
+   `chrome.exe` / `msedge.exe` / `brave.exe` heap pages, extracts every 32-byte
+   high-entropy candidate, and validates each one against a known ciphertext
+   from Login Data using AES-GCM (false positive rate ≈ 2⁻¹²⁸).
+   **Browser must be open** for this to work.
 
 ```bash
-# Decrypt passwords while Chrome is running (v20 memory scan fires automatically)
-phantom-harvest.exe -decrypt-browsers -browser chrome -logins-only -high-only
+# Decrypt passwords while Chrome is running (v20 memory scan)
+phantom-harvest.exe -decrypt-browsers -browser chrome -v20-memscan -logins-only -high-only
 ```
 
 If both methods fail (browser closed, Chrome 130+ with SYSTEM check), the tool

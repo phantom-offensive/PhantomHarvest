@@ -16,22 +16,16 @@ import (
 // alongside the per-OS chromium_*.go file.
 func enableAppBoundV20() { TryAppBoundV20 = true }
 
-// TryAppBoundV20 gates the Chrome v20+ app-bound key extraction path.
-// That path instantiates the browser's IElevator COM service and, on some
-// Chrome builds, crashes inside rpcrt4.dll with an access violation that
-// Go's recover() cannot catch (SEH from a syscall, not a Go panic). We
-// leave it OFF by default so the normal scan stays crash-proof; callers
-// that want to try it can set this to true. Wired up to a CLI flag.
+// TryAppBoundV20 gates the IElevator COM subprocess path for Chrome v20
+// app-bound key extraction. It spawns a subprocess per profile (with a
+// timeout) and on some Chrome builds can crash — so it is opt-in via the
+// -chrome-v20-experimental flag rather than running on every scan.
 var TryAppBoundV20 = false
 
 // getChromiumMasterKey reads Local State and attempts to unwrap both keys:
 //
 //   - v10: legacy DPAPI-wrapped AES key (all Chrome versions)
 //   - v20: app-bound encrypted key (Chrome v127+, introduced mid-2024)
-//
-// v20 is attempted by default now — the crash-prone IElevator COM path is
-// already protected by runtime.LockOSThread + recover(). TryAppBoundV20
-// is kept for backwards compatibility but no longer gates the attempt.
 func getChromiumMasterKey(profileDir, browserName string) (*chromiumKeys, error) {
 	out := &chromiumKeys{}
 	var v10Err, v20Err error
@@ -48,13 +42,15 @@ func getChromiumMasterKey(profileDir, browserName string) (*chromiumKeys, error)
 		v10Err = err
 	}
 
-	// Attempt 1: crash-isolated IElevator COM subprocess (Chrome < 130).
+	// Attempt 1 (opt-in): crash-isolated IElevator COM subprocess (Chrome < 130).
 	// Chrome 130+ added binary signature verification so this fails for
 	// unsigned binaries — we fall through to memory scanning.
-	if key, err := getChromiumAppBoundKeySubprocess(profileDir, browserName); err != nil {
-		v20Err = err
-	} else {
-		out.V20 = key
+	if TryAppBoundV20 {
+		if key, err := getChromiumAppBoundKeySubprocess(profileDir, browserName); err != nil {
+			v20Err = err
+		} else {
+			out.V20 = key
+		}
 	}
 
 	// Attempt 2: process memory scan (opt-in via -v20-memscan flag).
