@@ -87,7 +87,9 @@ func (s *Scanner) AddExcludes(paths []string) {
 func (s *Scanner) addFinding(f Finding) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	dk := f.Type + "|" + f.File + "|" + f.Key
+	// Include Value + Line so distinct credentials that share a key/type/file
+	// (e.g. two "password=" entries in one config) are both kept.
+	dk := fmt.Sprintf("%s|%s|%s|%s|%d", f.Type, f.File, f.Key, f.Value, f.Line)
 	if s.seen[dk] {
 		return
 	}
