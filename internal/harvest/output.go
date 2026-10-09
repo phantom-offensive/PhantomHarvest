@@ -3,11 +3,18 @@ package harvest
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 )
+
+// createLootFile opens a loot file owner-only (0600). Credential output
+// should never be world-readable, unlike os.Create's default 0666.
+func createLootFile(path string) (*os.File, error) {
+	return os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
+}
 
 // absPath returns the absolute version of p, or p unchanged on failure.
 // Used so the "Exported …" success line always shows where the file
@@ -362,7 +369,7 @@ func OutputJSONWriter(findings []Finding, meta ScanMeta, w *os.File) error {
 
 // OutputJSONFile writes findings as JSON to a file.
 func OutputJSONFile(findings []Finding, meta ScanMeta, path string) error {
-	f, err := os.Create(path)
+	f, err := createLootFile(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, err)
 		return err
@@ -378,7 +385,7 @@ func OutputJSONFile(findings []Finding, meta ScanMeta, path string) error {
 
 // OutputCSV writes findings as CSV to a file.
 func OutputCSV(findings []Finding, path string) error {
-	f, err := os.Create(path)
+	f, err := createLootFile(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, err)
 		return err
@@ -419,7 +426,7 @@ func OutputCSV(findings []Finding, path string) error {
 
 // OutputTXT writes findings as a readable text report.
 func OutputTXT(findings []Finding, path string) error {
-	f, err := os.Create(path)
+	f, err := createLootFile(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, err)
 		return err
@@ -460,7 +467,7 @@ func OutputTXT(findings []Finding, path string) error {
 	sort.Strings(cats)
 
 	for _, cat := range cats {
-		write(fmt.Sprintf("--- %s (%d) ---\n\n", cat, len(grouped[cat])))
+		write(fmt.Sprintf("--- %s (%d) ---\n\n", html.EscapeString(cat), len(grouped[cat])))
 		for _, finding := range grouped[cat] {
 			loc := finding.File
 			if finding.Line > 0 {
@@ -481,7 +488,7 @@ func OutputTXT(findings []Finding, path string) error {
 
 // OutputHTML writes a styled HTML report.
 func OutputHTML(findings []Finding, meta ScanMeta, path string) error {
-	f, err := os.Create(path)
+	f, err := createLootFile(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, err)
 		return err
@@ -551,7 +558,10 @@ body{background:#0a0e1a;color:#e0e7ff;font-family:'Segoe UI',system-ui,sans-seri
 <div>User: <span>%s</span></div>
 <div>Path: <span>%s</span></div>
 <div>Time: <span>%s</span></div>
-</div>`, meta.Hostname, meta.OS, meta.User, meta.ScanPath, meta.Timestamp))
+</div>`,
+		html.EscapeString(meta.Hostname), html.EscapeString(meta.OS),
+		html.EscapeString(meta.User), html.EscapeString(meta.ScanPath),
+		html.EscapeString(meta.Timestamp)))
 
 	// Stats
 	write(fmt.Sprintf(`<div class="stats">
@@ -563,7 +573,7 @@ body{background:#0a0e1a;color:#e0e7ff;font-family:'Segoe UI',system-ui,sans-seri
 
 	// Findings by category
 	for _, cat := range cats {
-		write(fmt.Sprintf(`<div class="cat"><div class="cat-head">%s (%d)</div>`, cat, len(grouped[cat])))
+		write(fmt.Sprintf(`<div class="cat"><div class="cat-head">%s (%d)</div>`, html.EscapeString(cat), len(grouped[cat])))
 		for _, finding := range grouped[cat] {
 			loc := finding.File
 			if finding.Line > 0 {
@@ -573,7 +583,7 @@ body{background:#0a0e1a;color:#e0e7ff;font-family:'Segoe UI',system-ui,sans-seri
 <span class="badge badge-%s">%s</span>
 <span class="file">%s</span><br>
 <span class="key">%s</span> &rarr; <span class="val-text">%s</span>
-</div>`, finding.Confidence, finding.Confidence, loc, finding.Key, finding.Value))
+</div>`, html.EscapeString(finding.Confidence), html.EscapeString(finding.Confidence), html.EscapeString(loc), html.EscapeString(finding.Key), html.EscapeString(finding.Value)))
 		}
 		write(`</div>`)
 	}
@@ -593,7 +603,7 @@ body{background:#0a0e1a;color:#e0e7ff;font-family:'Segoe UI',system-ui,sans-seri
 // Only findings of type "cookie" are included. The Key format produced by
 // decryptChromiumCookies is: "Browser | host | name | expires_utc".
 func OutputNetscape(findings []Finding, path string) error {
-	f, err := os.Create(path)
+	f, err := createLootFile(path)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "  [-] Error writing %s: %v\n", path, err)
 		return err

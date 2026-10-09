@@ -473,8 +473,8 @@ func findHomeDirs(root string) []string {
 		}
 	}
 
-	// 2. Linux/macOS: <root>/home/*, /home/*, /root, <root>/root
-	for _, base := range []string{filepath.Join(root, "home"), "/home"} {
+	// 2. Linux/macOS homes under root (when root is "/" this is /home/* and /root).
+	for _, base := range []string{filepath.Join(root, "home")} {
 		if entries, err := os.ReadDir(base); err == nil {
 			for _, e := range entries {
 				if e.IsDir() {
@@ -482,18 +482,15 @@ func findHomeDirs(root string) []string {
 				}
 			}
 		}
-		if root != "/" && base == "/home" {
-			break // don't double-walk /home unless we explicitly went there
-		}
 	}
-	for _, p := range []string{filepath.Join(root, "root"), "/root"} {
+	if p := filepath.Join(root, "root"); p != "" {
 		if st, err := os.Stat(p); err == nil && st.IsDir() {
 			add(p)
 		}
 	}
 
-	// 3. Windows-style and macOS Users directory: <root>\Users\*, /Users/*
-	for _, base := range []string{filepath.Join(root, "Users"), "/Users"} {
+	// 3. Windows-style and macOS Users directory under root.
+	for _, base := range []string{filepath.Join(root, "Users")} {
 		if entries, err := os.ReadDir(base); err == nil {
 			for _, e := range entries {
 				if !e.IsDir() {
