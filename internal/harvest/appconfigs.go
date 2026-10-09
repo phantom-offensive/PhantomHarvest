@@ -215,7 +215,12 @@ func (s *Scanner) scanVPNConfigs(home string) {
 	}
 
 	for _, dir := range vpnDirs {
-		vpnDir := filepath.Join(home, dir)
+		// Absolute system paths (e.g. /etc/openvpn) are scanned directly;
+		// relative paths are resolved under the current home.
+		vpnDir := dir
+		if !filepath.IsAbs(dir) {
+			vpnDir = filepath.Join(home, dir)
+		}
 		entries, err := os.ReadDir(vpnDir)
 		if err != nil {
 			continue
