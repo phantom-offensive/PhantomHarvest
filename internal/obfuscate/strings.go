@@ -16,9 +16,6 @@ var (
 	// Banner strings
 	bannerName    []byte
 	bannerSub     []byte
-
-	// Decoded cache
-	decoded = make(map[string]string)
 )
 
 func init() {

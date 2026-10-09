@@ -119,9 +119,11 @@ make garble-all
 
 **What the stealth build does:**
 - Obfuscates all Go function names and package paths
-- Encrypts all string literals at compile time
+- Encrypts all string literals at compile time (garble `-literals`)
 - Strips debug info and symbol tables
-- Command strings (cmdkey, netsh) are XOR-encrypted at runtime
+- The default (non-garble) build XOR-encodes only a few banner/command strings
+  (`cmdkey`, `netsh`, banner) at runtime — other literals (browser names, COM
+  names, JSON field names) stay plaintext unless you build with garble.
 
 **Additional OPSEC:**
 - Rename the binary before deployment (e.g., `svchost.exe`, `update.bin`)
