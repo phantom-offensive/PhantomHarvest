@@ -8,6 +8,7 @@ import (
 	"crypto/cipher"
 	"crypto/sha1"
 	"fmt"
+	"strings"
 
 	"github.com/godbus/dbus/v5"
 	"golang.org/x/crypto/pbkdf2"
@@ -38,8 +39,11 @@ func lookupSecretService(browserName string) string {
 	defer conn.Close()
 
 	secrets := conn.Object("org.freedesktop.secrets", "/org/freedesktop/secrets")
+	// Use the actual browser product name so Chromium/Brave/Edge keys are
+	// found instead of always querying Chrome's keyring entry.
+	app := strings.ToLower(browserName)
 	attrs := map[string]string{
-		"application": "chrome",
+		"application": app,
 	}
 	var unlocked, locked []dbus.ObjectPath
 	if err := secrets.Call("org.freedesktop.Secret.Service.SearchItems", 0, attrs).Store(&unlocked, &locked); err != nil {
