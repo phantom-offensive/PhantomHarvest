@@ -333,8 +333,8 @@ func (s *Scanner) scanHistoryFiles() {
 		regexp.MustCompile(`(?i)curl\s+.*Authorization:\s+Bearer\s+([^\s'"]+)`),
 		regexp.MustCompile(`(?i)wget\s+.*--password[= ]['"]?([^\s'"]+)`),
 		regexp.MustCompile(`(?i)echo\s+['"]?([^\s'"]+)['"]?\s*\|\s*su`),
-		regexp.MustCompile(`(?i)net\s+use\s+.*\/user:([^\s]+)\s+([^\s]+)`),
-		regexp.MustCompile(`(?i)mount\s+.*username=([^,]+).*password=([^\s,]+)`),
+		regexp.MustCompile(`(?i)net\s+use\s+.*\/user:[^\s]+\s+([^\s]+)`),
+		regexp.MustCompile(`(?i)mount\s+.*password=([^\s,]+)`),
 		regexp.MustCompile(`(?i)ftp\s+.*-p\s+([^\s]+)`),
 		regexp.MustCompile(`(?i)ssh\s+.*@`),
 	}
