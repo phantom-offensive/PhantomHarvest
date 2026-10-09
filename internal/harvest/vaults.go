@@ -122,8 +122,17 @@ func (s *Scanner) scanPasswordManagers() {
 
 	// Also walk the filesystem for .kdbx files outside home dirs
 	filepath.Walk(s.root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			if info != nil && info.IsDir() && shouldSkipDir(info.Name()) {
+		if err != nil {
+			return nil
+		}
+		if shouldSkipPath(path) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.IsDir() {
+			if shouldSkipDir(info.Name()) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -148,7 +157,16 @@ func (s *Scanner) scanPasswordManagers() {
 // findFiles searches for files with specific extensions under a directory.
 func (s *Scanner) findFiles(root string, extensions []string, category, ftype, key, value string, confidence string) {
 	filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
+		if err != nil {
+			return nil
+		}
+		if shouldSkipPath(path) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.IsDir() {
 			return nil
 		}
 		ext := strings.ToLower(filepath.Ext(path))

@@ -251,6 +251,12 @@ func (s *Scanner) scanKnownFiles() {
 		if err != nil {
 			return nil
 		}
+		if shouldSkipPath(path) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
 
 		// Skip common noisy directories
 		if info.IsDir() {

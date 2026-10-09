@@ -42,8 +42,17 @@ func (s *Scanner) scanWindows() {
 
 	// Also walk for .rdp files elsewhere
 	filepath.Walk(s.root, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			if info != nil && info.IsDir() && shouldSkipDir(info.Name()) {
+		if err != nil {
+			return nil
+		}
+		if shouldSkipPath(path) {
+			if info.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.IsDir() {
+			if shouldSkipDir(info.Name()) {
 				return filepath.SkipDir
 			}
 			return nil

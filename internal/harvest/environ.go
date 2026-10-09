@@ -156,6 +156,9 @@ func (s *Scanner) scanAppTokens() {
 		}
 		for _, p := range telegramPaths {
 			tDir := filepath.Join(home, p)
+			if shouldSkipPath(tDir) {
+				continue
+			}
 			if info, err := os.Stat(tDir); err == nil && info.IsDir() {
 				s.addFinding(Finding{
 					Category:   "App Token",
@@ -172,6 +175,9 @@ func (s *Scanner) scanAppTokens() {
 
 // scanLevelDBForTokens searches LevelDB files for authentication tokens.
 func (s *Scanner) scanLevelDBForTokens(dir, appName string) {
+	if shouldSkipPath(dir) {
+		return
+	}
 	tokenPatterns := []*regexp.Regexp{
 		// Discord tokens
 		regexp.MustCompile(`[\w-]{24}\.[\w-]{6}\.[\w-]{27}`),

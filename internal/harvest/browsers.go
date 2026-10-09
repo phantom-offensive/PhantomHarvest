@@ -141,6 +141,9 @@ func (s *Scanner) scanBrowsers() {
 
 			for _, relPath := range browser.paths {
 				profileDir := filepath.Join(home, relPath)
+				if shouldSkipPath(profileDir) {
+					continue
+				}
 
 				// For Firefox, enumerate profile subdirectories
 				if browser.name == "Firefox" && (strings.Contains(relPath, "Profiles") || strings.Contains(relPath, "firefox")) {
@@ -378,6 +381,9 @@ func (s *Scanner) scanFirefoxProfiles(profilesDir string, browser browserProfile
 			continue
 		}
 		profDir := filepath.Join(profilesDir, entry.Name())
+		if shouldSkipPath(profDir) {
+			continue
+		}
 
 		// Check for logins.json (Firefox stores creds in JSON, encrypted with NSS)
 		loginsPath := filepath.Join(profDir, "logins.json")

@@ -342,6 +342,9 @@ func (s *Scanner) scanHistoryFiles() {
 	for _, home := range homes {
 		for _, histFile := range historyFiles {
 			path := filepath.Join(home, histFile)
+			if shouldSkipPath(path) {
+				continue
+			}
 			data, err := os.ReadFile(path)
 			if err != nil {
 				continue
@@ -388,6 +391,9 @@ func (s *Scanner) scanSSHKeys() {
 	for _, home := range homes {
 		for _, keyFile := range keyFiles {
 			path := filepath.Join(home, keyFile)
+			if shouldSkipPath(path) {
+				continue
+			}
 			if _, err := os.Stat(path); err == nil {
 				ftype := "ssh_key"
 				if strings.Contains(keyFile, "authorized") {
