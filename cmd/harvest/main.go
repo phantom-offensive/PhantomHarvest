@@ -199,13 +199,13 @@ func defaultRootDir() string {
 func printBanner() {
 	name := obfuscate.BannerName()
 	sub := obfuscate.BannerSub()
-	fmt.Print("\033[35m")
-	fmt.Printf(`
+	fmt.Fprint(os.Stderr, "\033[35m")
+	fmt.Fprintf(os.Stderr, `
     ╔═══════════════════════════════════════╗
     ║   %s — %s  ║
     ║   v%s                             ║
     ╚═══════════════════════════════════════╝`, name, sub, version)
-	fmt.Print("\033[0m\n")
-	fmt.Printf("  OS: %s/%s\n", runtime.GOOS, runtime.GOARCH)
-	fmt.Println()
+	fmt.Fprint(os.Stderr, "\033[0m\n")
+	fmt.Fprintf(os.Stderr, "  OS: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+	fmt.Fprintln(os.Stderr)
 }

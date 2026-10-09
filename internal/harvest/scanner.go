@@ -97,8 +97,8 @@ func (s *Scanner) addFinding(f Finding) {
 
 // Run executes all credential scanning modules.
 func (s *Scanner) Run() []Finding {
-	fmt.Println("  \033[36m[*]\033[0m Scanning:", s.root)
-	fmt.Println()
+	fmt.Fprintln(os.Stderr, "  \033[36m[*]\033[0m Scanning:", s.root)
+	fmt.Fprintln(os.Stderr)
 
 	var wg sync.WaitGroup
 
@@ -206,7 +206,7 @@ func (s *Scanner) Run() []Finding {
 	results := s.results
 	s.mu.Unlock()
 
-	fmt.Printf("  \033[32m[+]\033[0m Found \033[1m%d\033[0m credentials\n\n", len(results))
+	fmt.Fprintf(os.Stderr, "  \033[32m[+]\033[0m Found \033[1m%d\033[0m credentials\n\n", len(results))
 	return results
 }
 
