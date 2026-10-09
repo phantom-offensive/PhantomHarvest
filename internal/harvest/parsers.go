@@ -463,13 +463,13 @@ func findHomeDirs(root string) []string {
 		homes = append(homes, p)
 	}
 
-	// 1. If `root` itself looks like a home dir, include it. The heuristic
-	//    is "has at least one of these well-known child dirs."
+	// 1. If `root` itself looks like a home dir, return just [root] —
+	//    enumerating sibling homes below would blow past the -path scope.
 	homeMarkers := []string{"AppData", ".config", ".mozilla", "Library", ".ssh", "Desktop", "Documents"}
 	for _, m := range homeMarkers {
 		if st, err := os.Stat(filepath.Join(root, m)); err == nil && st.IsDir() {
 			add(root)
-			break
+			return homes
 		}
 	}
 

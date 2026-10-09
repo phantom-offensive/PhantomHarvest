@@ -59,9 +59,14 @@ func getMasterKeyForProfile(profileDir, browserName string) (*chromiumKeys, erro
 		return &chromiumKeys{V10: externalChromiumKey}, nil
 	}
 	if dpapiMasterKey != nil {
-		if key, err := deriveChromiumKeyFromDPAPIBlob(profileDir, dpapiMasterKey); err == nil {
-			return &chromiumKeys{V10: key}, nil
+		key, err := deriveChromiumKeyFromDPAPIBlob(profileDir, dpapiMasterKey)
+		if err != nil {
+			// Do not silently fall back to the OS keyring: the caller
+			// explicitly supplied a DPAPI masterkey, so surface why it
+			// did not produce a Chrome key (wrong key / wrong profile).
+			return nil, fmt.Errorf("DPAPI masterkey derivation failed: %w", err)
 		}
+		return &chromiumKeys{V10: key}, nil
 	}
 	return getChromiumMasterKey(profileDir, browserName)
 }
