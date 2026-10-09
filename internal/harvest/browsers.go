@@ -423,6 +423,19 @@ func (s *Scanner) scanFirefoxProfiles(profilesDir string, browser browserProfile
 		if _, err := os.Stat(histPath); err == nil {
 			s.extractBrowserHistory(histPath, "Firefox")
 		}
+
+		// Cookies (session database)
+		cookiePath := filepath.Join(profDir, "cookies.sqlite")
+		if _, err := os.Stat(cookiePath); err == nil {
+			s.addFinding(Finding{
+				Category:   "Browser",
+				Type:       "firefox_cookie_db",
+				File:       cookiePath,
+				Key:        "Firefox Cookies",
+				Value:      "(session cookies database — extract with tools)",
+				Confidence: ConfMedium,
+			})
+		}
 	}
 }
 
