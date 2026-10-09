@@ -274,12 +274,13 @@ func (s *Scanner) scanKnownFiles() {
 
 		// Check if this is a known credential file
 		base := filepath.Base(path)
+		norm := filepath.ToSlash(path) // Windows backslashes → "/" for substring checks
 		if cat, ok := knownFiles[base]; ok {
 			s.parseCredentialFile(path, cat, base)
 		}
 
 		// Check for .git/config
-		if base == "config" && strings.Contains(path, ".git/") {
+		if base == "config" && strings.Contains(norm, ".git/") {
 			s.parseGitConfig(path)
 		}
 
@@ -289,17 +290,17 @@ func (s *Scanner) scanKnownFiles() {
 		}
 
 		// Check for AWS credential files
-		if strings.Contains(path, ".aws/credentials") || strings.Contains(path, ".aws/config") {
+		if strings.Contains(norm, ".aws/credentials") || strings.Contains(norm, ".aws/config") {
 			s.parseCredentialFile(path, "Cloud", "AWS Config")
 		}
 
 		// Check for Azure config
-		if strings.Contains(path, ".azure/") && (base == "accessTokens.json" || base == "azureProfile.json") {
+		if strings.Contains(norm, ".azure/") && (base == "accessTokens.json" || base == "azureProfile.json") {
 			s.parseCredentialFile(path, "Cloud", "Azure Config")
 		}
 
 		// Check for GCP config
-		if strings.Contains(path, "gcloud/") && (base == "credentials.db" || base == "application_default_credentials.json") {
+		if strings.Contains(norm, "gcloud/") && (base == "credentials.db" || base == "application_default_credentials.json") {
 			s.parseCredentialFile(path, "Cloud", "GCP Config")
 		}
 
