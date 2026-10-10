@@ -11,14 +11,13 @@ import (
 	"github.com/phantom-offensive/PhantomHarvest/internal/decrypt"
 )
 
-
 // Browser profile paths by OS
 type browserProfile struct {
-	name    string
-	paths   []string // relative to user home
-	loginDB string   // SQLite file for saved passwords
-	histDB  string   // SQLite file for history
-	cookieDB string  // SQLite file for cookies
+	name     string
+	paths    []string // relative to user home
+	loginDB  string   // SQLite file for saved passwords
+	histDB   string   // SQLite file for history
+	cookieDB string   // SQLite file for cookies
 }
 
 func getBrowserProfiles() []browserProfile {
@@ -64,28 +63,28 @@ func getBrowserProfiles() []browserProfile {
 	if runtime.GOOS == "darwin" {
 		return []browserProfile{
 			{
-				name: "Chrome",
-				paths: []string{"Library/Application Support/Google/Chrome/Default"},
+				name:    "Chrome",
+				paths:   []string{"Library/Application Support/Google/Chrome/Default"},
 				loginDB: "Login Data", histDB: "History", cookieDB: "Cookies",
 			},
 			{
-				name: "Chromium",
-				paths: []string{"Library/Application Support/Chromium/Default"},
+				name:    "Chromium",
+				paths:   []string{"Library/Application Support/Chromium/Default"},
 				loginDB: "Login Data", histDB: "History", cookieDB: "Cookies",
 			},
 			{
-				name: "Brave",
-				paths: []string{"Library/Application Support/BraveSoftware/Brave-Browser/Default"},
+				name:    "Brave",
+				paths:   []string{"Library/Application Support/BraveSoftware/Brave-Browser/Default"},
 				loginDB: "Login Data", histDB: "History", cookieDB: "Cookies",
 			},
 			{
-				name: "Edge",
-				paths: []string{"Library/Application Support/Microsoft Edge/Default"},
+				name:    "Edge",
+				paths:   []string{"Library/Application Support/Microsoft Edge/Default"},
 				loginDB: "Login Data", histDB: "History", cookieDB: "Cookies",
 			},
 			{
-				name: "Firefox",
-				paths: []string{"Library/Application Support/Firefox/Profiles"},
+				name:    "Firefox",
+				paths:   []string{"Library/Application Support/Firefox/Profiles"},
 				loginDB: "logins.json", histDB: "places.sqlite", cookieDB: "cookies.sqlite",
 			},
 		}
@@ -102,18 +101,18 @@ func getBrowserProfiles() []browserProfile {
 			loginDB: "Login Data", histDB: "History", cookieDB: "Cookies",
 		},
 		{
-			name: "Chromium",
-			paths: []string{".config/chromium/Default"},
+			name:    "Chromium",
+			paths:   []string{".config/chromium/Default"},
 			loginDB: "Login Data", histDB: "History", cookieDB: "Cookies",
 		},
 		{
-			name: "Firefox",
-			paths: []string{".mozilla/firefox"},
+			name:    "Firefox",
+			paths:   []string{".mozilla/firefox"},
 			loginDB: "logins.json", histDB: "places.sqlite", cookieDB: "cookies.sqlite",
 		},
 		{
-			name: "Brave",
-			paths: []string{".config/BraveSoftware/Brave-Browser/Default"},
+			name:    "Brave",
+			paths:   []string{".config/BraveSoftware/Brave-Browser/Default"},
 			loginDB: "Login Data", histDB: "History", cookieDB: "Cookies",
 		},
 	}
@@ -424,17 +423,29 @@ func (s *Scanner) scanFirefoxProfiles(profilesDir string, browser browserProfile
 			s.extractBrowserHistory(histPath, "Firefox")
 		}
 
+		// Bookmarks (title + URL from places.sqlite)
+		if s.DecryptBrowsers && decrypt.Enabled() {
+			if bms, err := decrypt.DumpFirefoxBookmarks(profDir); err == nil {
+				for _, b := range bms {
+					s.addFinding(Finding{Category: b.Category, Type: b.Type, File: b.File, Key: b.Key, Value: b.Value, Confidence: b.Confidence})
+				}
+			}
+		}
+
 		// Cookies (session database)
 		cookiePath := filepath.Join(profDir, "cookies.sqlite")
 		if _, err := os.Stat(cookiePath); err == nil {
-			s.addFinding(Finding{
-				Category:   "Browser",
-				Type:       "firefox_cookie_db",
-				File:       cookiePath,
-				Key:        "Firefox Cookies",
-				Value:      "(session cookies database — extract with tools)",
-				Confidence: ConfMedium,
-			})
+			if s.DecryptBrowsers && decrypt.Enabled() {
+				if cookies, err := decrypt.DumpFirefoxCookies(profDir); err == nil && len(cookies) > 0 {
+					for _, c := range cookies {
+						s.addFinding(Finding{Category: c.Category, Type: c.Type, File: c.File, Key: c.Key, Value: c.Value, Confidence: c.Confidence})
+					}
+				} else {
+					s.addFinding(Finding{Category: "Browser", Type: "firefox_cookie_db", File: cookiePath, Key: "Firefox Cookies", Value: "(no cookies or query failed)", Confidence: ConfMedium})
+				}
+			} else {
+				s.addFinding(Finding{Category: "Browser", Type: "firefox_cookie_db", File: cookiePath, Key: "Firefox Cookies", Value: "(session cookies database — extract with tools)", Confidence: ConfMedium})
+			}
 		}
 	}
 }

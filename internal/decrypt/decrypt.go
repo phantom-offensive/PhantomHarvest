@@ -43,3 +43,9 @@ func EnableMemScan() {}
 
 // ExtractBrowserTokens is a no-op in the stub build.
 func ExtractBrowserTokens() ([]DecryptedFinding, error) { return nil, ErrNotCompiledIn }
+
+// DumpFirefoxCookies is a stub when the decrypt tag is not set.
+func DumpFirefoxCookies(_ string) ([]DecryptedFinding, error) { return nil, ErrNotCompiledIn }
+
+// DumpFirefoxBookmarks is a stub when the decrypt tag is not set.
+func DumpFirefoxBookmarks(_ string) ([]DecryptedFinding, error) { return nil, ErrNotCompiledIn }
